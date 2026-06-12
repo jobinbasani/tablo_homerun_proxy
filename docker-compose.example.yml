@@ -1,0 +1,23 @@
+services:
+  tablo-homerun-proxy:
+    build: .
+    container_name: tablo-homerun-proxy
+    environment:
+      NAME: "Tablo 4th Gen Proxy"
+      DEVICE_ID: "12345679"
+      PORT: "8181"
+      LINEUP_UPDATE_INTERVAL: "30"
+      CREATE_XML: "false"
+      GUIDE_DAYS: "2"
+      INCLUDE_PSEUDOTV_GUIDE: "false"
+      LOG_LEVEL: "error"
+      SAVE_LOG: "true"
+      GUIDE_UPDATE_INTERVAL: "24"
+      INCLUDE_OTT: "true"
+      USER_NAME: "<tablo username>"
+      USER_PASS: "<tablo password>"
+    volumes:
+      - ./data:/data
+    ports:
+      - "8181:8181/tcp"
+    restart: unless-stopped

@@ -1,0 +1,10 @@
+.git
+.env
+creds.bin
+lineup.json
+guide.xml
+schedule_*.json
+tempGuide
+logs
+README.md
+docker-compose.example.yml
