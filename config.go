@@ -7,9 +7,10 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
+
+	"github.com/kelseyhightower/envconfig"
 )
 
 type Config struct {
@@ -36,6 +37,25 @@ type Config struct {
 	ForceLineup          bool
 }
 
+type EnvConfig struct {
+	Name                 string `envconfig:"NAME" default:"Tablo 4th Gen Proxy"`
+	DeviceID             string `envconfig:"DEVICE_ID" default:"12345679"`
+	Port                 string `envconfig:"PORT" default:"8181"`
+	LineupUpdateInterval int    `envconfig:"LINEUP_UPDATE_INTERVAL" default:"30"`
+	CreateXML            bool   `envconfig:"CREATE_XML" default:"false"`
+	GuideDays            int    `envconfig:"GUIDE_DAYS" default:"2"`
+	IncludePseudoTVGuide bool   `envconfig:"INCLUDE_PSEUDOTV_GUIDE" default:"false"`
+	LogLevel             string `envconfig:"LOG_LEVEL" default:"error"`
+	SaveLog              bool   `envconfig:"SAVE_LOG" default:"false"`
+	OutDir               string `envconfig:"OUT_DIR" default:""`
+	TabloDevice          string `envconfig:"TABLO_DEVICE" default:""`
+	UserName             string `envconfig:"USER_NAME" default:""`
+	UserPass             string `envconfig:"USER_PASS" default:""`
+	IPAddress            string `envconfig:"IP_ADDRESS" default:""`
+	GuideUpdateInterval  int    `envconfig:"GUIDE_UPDATE_INTERVAL" default:"24"`
+	IncludeOTT           bool   `envconfig:"INCLUDE_OTT" default:"true"`
+}
+
 func LoadConfig() (Config, error) {
 	baseDir, err := os.Getwd()
 	if err != nil {
@@ -55,28 +75,33 @@ func LoadConfig() (Config, error) {
 		}
 	}
 
+	envCfg := EnvConfig{}
+	if err := envconfig.Process("", &envCfg); err != nil {
+		return Config{}, err
+	}
+
 	cfg := Config{}
 	flag.BoolVar(&cfg.ForceCreds, "creds", false, "force creation of a new credentials file")
 	flag.BoolVar(&cfg.ForceCreds, "c", false, "force creation of a new credentials file")
 	flag.BoolVar(&cfg.ForceLineup, "lineup", false, "force creation of a fresh lineup file")
 	flag.BoolVar(&cfg.ForceLineup, "l", false, "force creation of a fresh lineup file")
 
-	name := flag.String("name", envOrDefault("NAME", "Tablo 4th Gen Proxy"), "device name shown to Plex")
-	deviceID := flag.String("id", envOrDefault("DEVICE_ID", "12345679"), "fake HDHomeRun device ID")
-	port := flag.String("port", envOrDefault("PORT", "8181"), "HTTP port")
-	lineupDays := flag.Int("channels", envInt("LINEUP_UPDATE_INTERVAL", 30), "lineup update interval in days")
-	createXML := flag.Bool("xml", envBool("CREATE_XML", false), "create XMLTV guide data")
-	guideDays := flag.Int("days", envInt("GUIDE_DAYS", 2), "guide days to cache")
-	pseudo := flag.Bool("pseudo", envBool("INCLUDE_PSEUDOTV_GUIDE", false), "include .pseudotv/xmltv.xml")
-	logLevel := flag.String("level", envOrDefault("LOG_LEVEL", "error"), "log level: info,error,warn,debug")
-	saveLog := flag.Bool("log", envBool("SAVE_LOG", false), "write logs to disk")
-	outDir := flag.String("outdir", envOrDefault("OUT_DIR", ""), "output directory")
-	tabloDevice := flag.String("device", envOrDefault("TABLO_DEVICE", ""), "Tablo server ID")
-	user := flag.String("user", envOrDefault("USER_NAME", ""), "Tablo username")
-	pass := flag.String("pass", envOrDefault("USER_PASS", ""), "Tablo password")
-	ip := flag.String("ip_address", envOrDefault("IP_ADDRESS", ""), "static IP address for advertised server URL")
-	guideHours := flag.Int("guide", envInt("GUIDE_UPDATE_INTERVAL", 24), "guide update interval in hours")
-	ott := flag.Bool("ott", envBool("INCLUDE_OTT", true), "include OTT channels")
+	name := flag.String("name", envCfg.Name, "device name shown to Plex")
+	deviceID := flag.String("id", envCfg.DeviceID, "fake HDHomeRun device ID")
+	port := flag.String("port", envCfg.Port, "HTTP port")
+	lineupDays := flag.Int("channels", envCfg.LineupUpdateInterval, "lineup update interval in days")
+	createXML := flag.Bool("xml", envCfg.CreateXML, "create XMLTV guide data")
+	guideDays := flag.Int("days", envCfg.GuideDays, "guide days to cache")
+	pseudo := flag.Bool("pseudo", envCfg.IncludePseudoTVGuide, "include .pseudotv/xmltv.xml")
+	logLevel := flag.String("level", envCfg.LogLevel, "log level: info,error,warn,debug")
+	saveLog := flag.Bool("log", envCfg.SaveLog, "write logs to disk")
+	outDir := flag.String("outdir", envCfg.OutDir, "output directory")
+	tabloDevice := flag.String("device", envCfg.TabloDevice, "Tablo server ID")
+	user := flag.String("user", envCfg.UserName, "Tablo username")
+	pass := flag.String("pass", envCfg.UserPass, "Tablo password")
+	ip := flag.String("ip_address", envCfg.IPAddress, "static IP address for advertised server URL")
+	guideHours := flag.Int("guide", envCfg.GuideUpdateInterval, "guide update interval in hours")
+	ott := flag.Bool("ott", envCfg.IncludeOTT, "include OTT channels")
 	flag.Parse()
 
 	cfg.Name = *name
@@ -164,22 +189,6 @@ func envOrDefault(key, fallback string) string {
 		return value
 	}
 	return fallback
-}
-
-func envBool(key string, fallback bool) bool {
-	value := strings.ToLower(os.Getenv(key))
-	if value == "" {
-		return fallback
-	}
-	return value == "true" || value == "1" || value == "yes"
-}
-
-func envInt(key string, fallback int) int {
-	value, err := strconv.Atoi(os.Getenv(key))
-	if err != nil {
-		return fallback
-	}
-	return value
 }
 
 func firstIPv4() string {

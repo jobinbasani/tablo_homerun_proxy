@@ -15,7 +15,7 @@ Go implementation of a Tablo 4th Gen to HDHomeRun-compatible proxy for Plex Live
 go run .
 ```
 
-The first run creates `.env` with defaults. Set `USER_NAME` and `USER_PASS` for non-interactive setup, or leave them empty to be prompted.
+The first run creates `.env` with defaults. Environment variables are loaded with `github.com/kelseyhightower/envconfig`, and CLI flags override those values. Set `USER_NAME` and `USER_PASS` for non-interactive setup, or leave them empty to be prompted.
 
 ## Docker
 
