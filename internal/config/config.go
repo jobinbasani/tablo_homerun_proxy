@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"bufio"
@@ -56,7 +56,7 @@ type EnvConfig struct {
 	IncludeOTT           bool   `envconfig:"INCLUDE_OTT" default:"true"`
 }
 
-func LoadConfig() (Config, error) {
+func Load() (Config, error) {
 	baseDir, err := os.Getwd()
 	if err != nil {
 		return Config{}, err

@@ -5,17 +5,22 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
+
+	"github.com/jobinbasani/tablo_homerun_proxy/internal/config"
+	"github.com/jobinbasani/tablo_homerun_proxy/internal/logging"
+	"github.com/jobinbasani/tablo_homerun_proxy/internal/scheduler"
+	"github.com/jobinbasani/tablo_homerun_proxy/internal/server"
+	"github.com/jobinbasani/tablo_homerun_proxy/internal/tablo"
 )
 
 func main() {
-	cfg, err := LoadConfig()
+	cfg, err := config.Load()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "config error: %v\n", err)
 		os.Exit(1)
 	}
-	logger, err := NewLogger(cfg)
+	logger, err := logging.New(cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "logger error: %v\n", err)
 		os.Exit(1)
@@ -25,11 +30,11 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	app := NewApp(cfg, logger)
-	lineupScheduler := NewScheduler(cfg.OutDir, "schedule_lineup.json", "channel lineup update", cfg.LineupInterval, logger, app.MakeLineup)
-	guideScheduler := NewScheduler(cfg.OutDir, "schedule_guide.json", "guide data update", cfg.GuideInterval, logger, app.CacheGuideData)
+	tabloService := tablo.New(cfg, logger)
+	lineupScheduler := scheduler.New(cfg.OutDir, "schedule_lineup.json", "channel lineup update", cfg.LineupInterval, logger, tabloService.MakeLineup)
+	guideScheduler := scheduler.New(cfg.OutDir, "schedule_guide.json", "guide data update", cfg.GuideInterval, logger, tabloService.CacheGuideData)
 
-	if err := app.EnsureCredentials(ctx); err != nil {
+	if err := tabloService.EnsureCredentials(ctx); err != nil {
 		logger.Error("credentials setup failed: %v", err)
 		os.Exit(1)
 	}
@@ -55,17 +60,17 @@ func main() {
 		logger.Info("Forced lineup update complete.")
 		return
 	}
-	if !fileExists(app.lineupPath()) {
+	if !tabloService.LineupExists() {
 		if err := lineupScheduler.RunNow(ctx); err != nil {
 			logger.Error("initial lineup update failed: %v", err)
 			os.Exit(1)
 		}
 	}
-	if err := app.LoadLineup(); err != nil {
-		logger.Error("could not read lineup file %s: %v", filepath.Join(cfg.OutDir, "lineup.json"), err)
+	if err := tabloService.LoadLineup(); err != nil {
+		logger.Error("could not read lineup file: %v", err)
 		os.Exit(1)
 	}
-	if cfg.CreateXML && !fileExists(app.guidePath()) {
+	if cfg.CreateXML && !tabloService.GuideExists() {
 		if err := guideScheduler.RunNow(ctx); err != nil {
 			logger.Error("initial guide update failed: %v", err)
 			os.Exit(1)
@@ -75,7 +80,8 @@ func main() {
 	if cfg.CreateXML {
 		guideScheduler.Start(ctx)
 	}
-	if err := app.RunServer(ctx); err != nil {
+	httpServer := server.New(cfg, logger, tabloService)
+	if err := httpServer.Run(ctx); err != nil {
 		logger.Error("server failed: %v", err)
 		os.Exit(1)
 	}

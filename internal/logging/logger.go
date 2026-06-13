@@ -1,4 +1,4 @@
-package main
+package logging
 
 import (
 	"fmt"
@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/jobinbasani/tablo_homerun_proxy/internal/config"
 )
 
 type Logger struct {
@@ -15,7 +17,7 @@ type Logger struct {
 	mu    sync.Mutex
 }
 
-func NewLogger(cfg Config) (*Logger, error) {
+func New(cfg config.Config) (*Logger, error) {
 	logger := &Logger{level: logLevelNumber(cfg.LogLevel)}
 	if cfg.SaveLog {
 		logDir := filepath.Join(cfg.OutDir, "logs")

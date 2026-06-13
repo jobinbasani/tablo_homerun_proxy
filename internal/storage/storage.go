@@ -1,4 +1,4 @@
-package main
+package storage
 
 import (
 	"encoding/json"
@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 )
 
-func readJSONFile[T any](path string) (T, error) {
+func ReadJSONFile[T any](path string) (T, error) {
 	var value T
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -16,22 +16,22 @@ func readJSONFile[T any](path string) (T, error) {
 	return value, err
 }
 
-func writeJSONFile(path string, value any) error {
+func WriteJSONFile(path string, value any) error {
 	data, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
 		return err
 	}
-	return writeFile(path, data, 0o600)
+	return WriteFile(path, data, 0o600)
 }
 
-func writeFile(path string, data []byte, mode os.FileMode) error {
+func WriteFile(path string, data []byte, mode os.FileMode) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
 	return os.WriteFile(path, data, mode)
 }
 
-func fileExists(path string) bool {
+func FileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
 }

@@ -1,4 +1,4 @@
-package main
+package tablo
 
 import (
 	"context"
@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/jobinbasani/tablo_homerun_proxy/internal/storage"
 )
 
 type GuideAiring struct {
@@ -40,18 +42,18 @@ type GuideAiring struct {
 	} `json:"movieAiring"`
 }
 
-func (a *App) CacheGuideData(ctx context.Context) error {
-	channels, err := readJSONFile[[]Channel](a.lineupPath())
+func (s *Service) CacheGuideData(ctx context.Context) error {
+	channels, err := storage.ReadJSONFile[[]Channel](s.lineupPath())
 	if err != nil {
 		return err
 	}
-	tempDir := filepath.Join(a.cfg.OutDir, "tempGuide")
+	tempDir := filepath.Join(s.cfg.OutDir, "tempGuide")
 	if err := os.MkdirAll(tempDir, 0o755); err != nil {
 		return err
 	}
-	days := guideDays(a.cfg.GuideDays)
+	days := guideDays(s.cfg.GuideDays)
 	for _, channel := range channels {
-		if !a.cfg.IncludeOTT && channel.Kind == "ott" {
+		if !s.cfg.IncludeOTT && channel.Kind == "ott" {
 			continue
 		}
 		for _, day := range days {
@@ -59,30 +61,30 @@ func (a *App) CacheGuideData(ctx context.Context) error {
 			path := filepath.Join(tempDir, fileName)
 			requestPath := "/api/v2/account/guide/channels/" + channel.Identifier + "/airings/" + day + "/"
 			var airings []GuideAiring
-			if err := a.lighthouseJSON(ctx, http.MethodGet, requestPath, a.creds.LighthouseTVAuthorization, nil, &airings); err != nil {
-				a.log.Warn("guide fetch failed for %s: %v", fileName, err)
+			if err := s.lighthouseJSON(ctx, http.MethodGet, requestPath, s.creds.LighthouseTVAuthorization, nil, &airings); err != nil {
+				s.log.Warn("guide fetch failed for %s: %v", fileName, err)
 				airings = []GuideAiring{}
 			}
-			if err := writeJSONFile(path, airings); err != nil {
+			if err := storage.WriteJSONFile(path, airings); err != nil {
 				return err
 			}
 		}
 	}
-	xmlData, err := a.buildXMLGuide(channels, days)
+	xmlData, err := s.buildXMLGuide(channels, days)
 	if err != nil {
 		return err
 	}
-	return writeFile(a.guidePath(), []byte(xmlData), 0o644)
+	return storage.WriteFile(s.GuidePath(), []byte(xmlData), 0o644)
 }
 
-func (a *App) buildXMLGuide(channels []Channel, days []string) (string, error) {
+func (s *Service) buildXMLGuide(channels []Channel, days []string) (string, error) {
 	var b strings.Builder
 	b.WriteString(xml.Header)
 	b.WriteString(`<tv generator-info-name="`)
-	writeEscaped(&b, a.cfg.Name)
+	writeEscaped(&b, s.cfg.Name)
 	b.WriteString(`">` + "\n")
 	for _, channel := range channels {
-		if !a.cfg.IncludeOTT && channel.Kind == "ott" {
+		if !s.cfg.IncludeOTT && channel.Kind == "ott" {
 			continue
 		}
 		id, name, icon := xmlChannel(channel)
@@ -98,8 +100,8 @@ func (a *App) buildXMLGuide(channels []Channel, days []string) (string, error) {
 		}
 		b.WriteString("</channel>\n")
 		for _, day := range days {
-			path := filepath.Join(a.cfg.OutDir, "tempGuide", channel.Identifier+"_"+day+".json")
-			airings, err := readJSONFile[[]GuideAiring](path)
+			path := filepath.Join(s.cfg.OutDir, "tempGuide", channel.Identifier+"_"+day+".json")
+			airings, err := storage.ReadJSONFile[[]GuideAiring](path)
 			if err != nil {
 				return "", err
 			}
@@ -141,8 +143,8 @@ func (a *App) buildXMLGuide(channels []Channel, days []string) (string, error) {
 			}
 		}
 	}
-	if a.cfg.IncludePseudoTVGuide {
-		pseudoPath := filepath.Join(a.cfg.OutDir, ".pseudotv", "xmltv.xml")
+	if s.cfg.IncludePseudoTVGuide {
+		pseudoPath := filepath.Join(s.cfg.OutDir, ".pseudotv", "xmltv.xml")
 		if data, err := os.ReadFile(pseudoPath); err == nil {
 			lines := strings.Split(string(data), "\n")
 			if len(lines) > 3 {

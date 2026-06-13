@@ -1,4 +1,4 @@
-package main
+package tablo
 
 type Credentials struct {
 	LighthouseTVAuthorization string       `json:"lighthousetvAuthorization"`

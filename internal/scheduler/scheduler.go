@@ -1,4 +1,4 @@
-package main
+package scheduler
 
 import (
 	"context"
@@ -6,6 +6,9 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/jobinbasani/tablo_homerun_proxy/internal/logging"
+	"github.com/jobinbasani/tablo_homerun_proxy/internal/storage"
 )
 
 type ScheduleFile struct {
@@ -18,10 +21,10 @@ type Scheduler struct {
 	label    string
 	interval time.Duration
 	task     func(context.Context) error
-	log      *Logger
+	log      *logging.Logger
 }
 
-func NewScheduler(outDir, filename, label string, interval time.Duration, logger *Logger, task func(context.Context) error) *Scheduler {
+func New(outDir, filename, label string, interval time.Duration, logger *logging.Logger, task func(context.Context) error) *Scheduler {
 	return &Scheduler{
 		path:     filepath.Join(outDir, filename),
 		label:    label,
@@ -87,7 +90,7 @@ func (s *Scheduler) nextCheck() time.Time {
 }
 
 func (s *Scheduler) save(next time.Time) error {
-	return writeJSONFile(s.path, ScheduleFile{
+	return storage.WriteJSONFile(s.path, ScheduleFile{
 		IntervalSeconds: int64(s.interval.Seconds()),
 		NextCheck:       next,
 	})

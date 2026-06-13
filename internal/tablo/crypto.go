@@ -1,4 +1,4 @@
-package main
+package tablo
 
 import (
 	"bytes"
@@ -59,6 +59,13 @@ func makeDeviceAuth(method, path string, body []byte, date string) string {
 	_, _ = mac.Write([]byte(signatureText))
 	deviceKey := envOrDefault("DeviceKey", "ljpg6ZkwShVv8aI12E2LP55Ep8vq1uYDPvX0DdTB")
 	return "tablo:" + deviceKey + ":" + hex.EncodeToString(mac.Sum(nil))
+}
+
+func envOrDefault(key, fallback string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return fallback
 }
 
 func newUUID() (string, error) {
