@@ -3,6 +3,7 @@
 creds.bin
 lineup.json
 guide.xml
+proxy.db
 schedule_*.json
 tempGuide
 logs

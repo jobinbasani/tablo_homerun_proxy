@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tablo HomeRun Proxy Admin</title>
+  <link rel="stylesheet" href="/admin/assets/style.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <h1>Tablo HomeRun Proxy</h1>
+        <p id="summary">Admin console</p>
+      </div>
+      <button id="logout" class="ghost hidden">Log out</button>
+    </header>
+
+    <section id="loginPanel" class="panel narrow">
+      <h2>Admin Login</h2>
+      <p class="muted">Enter the admin password. On first run, this initializes the admin password if one was not provided.</p>
+      <form id="loginForm" class="stack">
+        <label>Password<input type="password" name="password" required autocomplete="current-password"></label>
+        <button type="submit">Continue</button>
+      </form>
+    </section>
+
+    <section id="appPanel" class="hidden">
+      <nav class="tabs">
+        <button data-tab="status" class="active">Status</button>
+        <button data-tab="setup">Setup</button>
+        <button data-tab="settings">Settings</button>
+        <button data-tab="logs">Logs</button>
+      </nav>
+
+      <section id="status" class="tab active">
+        <div class="grid">
+          <article class="card"><span>Server URL</span><strong id="serverURL">-</strong></article>
+          <article class="card"><span>Tuners</span><strong id="tunerCount">-</strong></article>
+          <article class="card"><span>Proxy Ready</span><strong id="proxyReady">-</strong></article>
+          <article class="card warn"><span>Restart Required</span><strong id="restartPending">-</strong></article>
+          <article class="card"><span>Active Streams</span><strong id="activeStreams">-</strong></article>
+        </div>
+        <div class="actions">
+          <button id="refreshLineup">Refresh Lineup</button>
+          <button id="refreshGuide">Refresh Guide</button>
+          <button id="reloadStatus" class="secondary">Reload Status</button>
+        </div>
+      </section>
+
+      <section id="setup" class="tab">
+        <div class="panel">
+          <h2>Tablo Account</h2>
+          <form id="tabloLoginForm" class="stack two">
+            <label>Email<input name="username" type="email" required autocomplete="username"></label>
+            <label>Password<input name="password" type="password" required autocomplete="current-password"></label>
+            <button type="submit">Find Devices</button>
+          </form>
+          <div id="deviceList" class="device-list"></div>
+        </div>
+      </section>
+
+      <section id="settings" class="tab">
+        <form id="configForm" class="settings"></form>
+        <div class="actions"><button form="configForm" type="submit">Save Settings</button></div>
+      </section>
+
+      <section id="logs" class="tab">
+        <div class="actions"><button id="reloadLogs" class="secondary">Reload Logs</button></div>
+        <pre id="logOutput" class="logs"></pre>
+      </section>
+    </section>
+
+    <div id="toast" class="toast hidden"></div>
+  </main>
+  <script src="/admin/assets/app.js"></script>
+</body>
+</html>

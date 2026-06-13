@@ -35,6 +35,8 @@ type Config struct {
 	ServerURL            string
 	ForceCreds           bool
 	ForceLineup          bool
+	DBPath               string
+	AdminPassword        string
 }
 
 type EnvConfig struct {
@@ -54,6 +56,8 @@ type EnvConfig struct {
 	IPAddress            string `envconfig:"IP_ADDRESS" default:""`
 	GuideUpdateInterval  int    `envconfig:"GUIDE_UPDATE_INTERVAL" default:"24"`
 	IncludeOTT           bool   `envconfig:"INCLUDE_OTT" default:"true"`
+	DBPath               string `envconfig:"DB_PATH" default:""`
+	AdminPassword        string `envconfig:"ADMIN_PASSWORD" default:""`
 }
 
 func Load() (Config, error) {
@@ -102,6 +106,8 @@ func Load() (Config, error) {
 	ip := flag.String("ip_address", envCfg.IPAddress, "static IP address for advertised server URL")
 	guideHours := flag.Int("guide", envCfg.GuideUpdateInterval, "guide update interval in hours")
 	ott := flag.Bool("ott", envCfg.IncludeOTT, "include OTT channels")
+	dbPath := flag.String("db", envCfg.DBPath, "SQLite database path")
+	adminPassword := flag.String("admin_password", envCfg.AdminPassword, "initial admin password")
 	flag.Parse()
 
 	cfg.Name = *name
@@ -127,14 +133,29 @@ func Load() (Config, error) {
 	if err := os.MkdirAll(cfg.OutDir, 0o755); err != nil {
 		return Config{}, err
 	}
+	cfg.DBPath = *dbPath
+	if cfg.DBPath == "" {
+		cfg.DBPath = filepath.Join(cfg.OutDir, "proxy.db")
+	}
+	cfg.AdminPassword = *adminPassword
 	if *ip == "" {
 		cfg.IPAddress = firstIPv4()
 	} else {
 		cfg.IPAddress = *ip
 	}
+	cfg = ApplyDerived(cfg)
+	return cfg, nil
+}
+
+func ApplyDerived(cfg Config) Config {
+	if cfg.IPAddress == "" {
+		cfg.IPAddress = firstIPv4()
+	}
+	cfg.GuideDays = clamp(cfg.GuideDays, 1, 7)
+	cfg.LogLevel = normalizeLogLevel(cfg.LogLevel)
 	cfg.ServerURL = fmt.Sprintf("http://%s:%s", cfg.IPAddress, cfg.Port)
 	cfg.FFmpegLogLevel = ffmpegLogLevel(cfg.LogLevel)
-	return cfg, nil
+	return cfg
 }
 
 func ensureEnvFile(path string) error {
@@ -155,6 +176,8 @@ func ensureEnvFile(path string) error {
 		`IP_ADDRESS=""`,
 		`GUIDE_UPDATE_INTERVAL="24"`,
 		`INCLUDE_OTT="true"`,
+		`DB_PATH=""`,
+		`ADMIN_PASSWORD=""`,
 	}
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return os.WriteFile(path, []byte(strings.Join(defaults, "\n")+"\n"), 0o600)

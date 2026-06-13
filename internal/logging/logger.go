@@ -1,6 +1,7 @@
 package logging
 
 import (
+	"bufio"
 	"fmt"
 	"log"
 	"os"
@@ -14,6 +15,7 @@ import (
 type Logger struct {
 	level int
 	file  *os.File
+	loc   string
 	mu    sync.Mutex
 }
 
@@ -30,6 +32,7 @@ func New(cfg config.Config) (*Logger, error) {
 			return nil, err
 		}
 		logger.file = file
+		logger.loc = path
 	}
 	return logger, nil
 }
@@ -39,6 +42,26 @@ func (l *Logger) Close() error {
 		return nil
 	}
 	return l.file.Close()
+}
+
+func (l *Logger) RecentLines(limit int) ([]string, error) {
+	if l.file == nil || l.loc == "" || limit <= 0 {
+		return []string{}, nil
+	}
+	file, err := os.Open(l.loc)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	var lines []string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+		if len(lines) > limit {
+			lines = lines[1:]
+		}
+	}
+	return lines, scanner.Err()
 }
 
 func (l *Logger) Info(format string, args ...any) {

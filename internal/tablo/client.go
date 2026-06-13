@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jobinbasani/tablo_homerun_proxy/internal/config"
@@ -21,6 +22,7 @@ import (
 )
 
 var ErrChannelNotFound = errors.New("channel not found")
+var ErrCredentialsMissing = errors.New("tablo credentials are not configured")
 
 type Service struct {
 	cfg    config.Config
@@ -29,6 +31,14 @@ type Service struct {
 	creds  Credentials
 	lineup map[string]LineupEntry
 	tuners int
+	setup  *pendingSetup
+	mu     sync.RWMutex
+}
+
+type pendingSetup struct {
+	authorization string
+	account       TabloAccount
+	profile       TabloProfile
 }
 
 func New(cfg config.Config, logger *logging.Logger) *Service {
@@ -42,15 +52,33 @@ func New(cfg config.Config, logger *logging.Logger) *Service {
 }
 
 func (s *Service) credsPath() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return filepath.Join(s.cfg.OutDir, "creds.bin")
 }
 
 func (s *Service) lineupPath() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return filepath.Join(s.cfg.OutDir, "lineup.json")
 }
 
 func (s *Service) GuidePath() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return filepath.Join(s.cfg.OutDir, "guide.xml")
+}
+
+func (s *Service) SetConfig(cfg config.Config) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.cfg = cfg
+}
+
+func (s *Service) Config() config.Config {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.cfg
 }
 
 func (s *Service) LineupExists() bool {
@@ -62,6 +90,8 @@ func (s *Service) GuideExists() bool {
 }
 
 func (s *Service) Lineup() []LineupEntry {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	lineup := make([]LineupEntry, 0, len(s.lineup))
 	for _, entry := range s.lineup {
 		lineup = append(lineup, entry)
@@ -70,11 +100,15 @@ func (s *Service) Lineup() []LineupEntry {
 }
 
 func (s *Service) Channel(channelID string) (LineupEntry, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	entry, ok := s.lineup[channelID]
 	return entry, ok
 }
 
 func (s *Service) TunerCount() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.tuners
 }
 
@@ -86,9 +120,33 @@ func (s *Service) EnsureCredentials(ctx context.Context) error {
 	return s.ReadCredentials()
 }
 
+func (s *Service) EnsureCredentialsNonInteractive(ctx context.Context) error {
+	cfg := s.Config()
+	if storage.FileExists(s.credsPath()) && !cfg.ForceCreds {
+		return s.ReadCredentials()
+	}
+	if cfg.UserName == "" || cfg.UserPass == "" {
+		return ErrCredentialsMissing
+	}
+	auth, account, err := s.loginAccount(ctx, cfg.UserName, cfg.UserPass)
+	if err != nil {
+		return err
+	}
+	profile, err := s.selectProfile(account.Profiles)
+	if err != nil {
+		return err
+	}
+	device, err := s.selectDevice(account.Devices)
+	if err != nil {
+		return err
+	}
+	return s.createCredentialsForSelection(ctx, auth, account.Identifier, profile, device)
+}
+
 func (s *Service) CreateCredentials(ctx context.Context) error {
-	user := s.cfg.UserName
-	pass := s.cfg.UserPass
+	cfg := s.Config()
+	user := cfg.UserName
+	pass := cfg.UserPass
 	reader := bufio.NewReader(os.Stdin)
 	if user == "" {
 		fmt.Print("What is your email? ")
@@ -100,23 +158,9 @@ func (s *Service) CreateCredentials(ctx context.Context) error {
 		line, _ := reader.ReadString('\n')
 		pass = strings.TrimSpace(line)
 	}
-	loginBody := map[string]string{"email": user, "password": pass}
-	var login LoginResponse
-	if err := s.lighthouseJSON(ctx, http.MethodPost, "/api/v2/login/", "", loginBody, &login); err != nil {
+	auth, account, err := s.loginAccount(ctx, user, pass)
+	if err != nil {
 		return err
-	}
-	if login.AccessToken == "" || login.TokenType == "" {
-		return fmt.Errorf("login was not accepted: %s", login.Message)
-	}
-	auth := login.TokenType + " " + login.AccessToken
-	s.log.Info("Login was accepted.")
-
-	var account TabloAccount
-	if err := s.lighthouseJSON(ctx, http.MethodGet, "/api/v2/account/", auth, nil, &account); err != nil {
-		return err
-	}
-	if account.Identifier == "" {
-		return fmt.Errorf("account identifier missing")
 	}
 	profile, err := s.selectProfile(account.Profiles)
 	if err != nil {
@@ -126,7 +170,62 @@ func (s *Service) CreateCredentials(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	return s.createCredentialsForSelection(ctx, auth, account.Identifier, profile, device)
+}
 
+func (s *Service) LoginForDevices(ctx context.Context, user, pass string) ([]TabloDevice, error) {
+	auth, account, err := s.loginAccount(ctx, user, pass)
+	if err != nil {
+		return nil, err
+	}
+	profile, err := s.selectProfile(account.Profiles)
+	if err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	s.setup = &pendingSetup{authorization: auth, account: account, profile: profile}
+	s.mu.Unlock()
+	return account.Devices, nil
+}
+
+func (s *Service) SelectDevice(ctx context.Context, serverID string) error {
+	s.mu.RLock()
+	setup := s.setup
+	s.mu.RUnlock()
+	if setup == nil {
+		return fmt.Errorf("no pending Tablo login")
+	}
+	for _, device := range setup.account.Devices {
+		if device.ServerID == serverID {
+			return s.createCredentialsForSelection(ctx, setup.authorization, setup.account.Identifier, setup.profile, device)
+		}
+	}
+	return fmt.Errorf("device %s was not found", serverID)
+}
+
+func (s *Service) loginAccount(ctx context.Context, user, pass string) (string, TabloAccount, error) {
+	loginBody := map[string]string{"email": user, "password": pass}
+	var login LoginResponse
+	if err := s.lighthouseJSON(ctx, http.MethodPost, "/api/v2/login/", "", loginBody, &login); err != nil {
+		return "", TabloAccount{}, err
+	}
+	if login.AccessToken == "" || login.TokenType == "" {
+		return "", TabloAccount{}, fmt.Errorf("login was not accepted: %s", login.Message)
+	}
+	auth := login.TokenType + " " + login.AccessToken
+	s.log.Info("Login was accepted.")
+
+	var account TabloAccount
+	if err := s.lighthouseJSON(ctx, http.MethodGet, "/api/v2/account/", auth, nil, &account); err != nil {
+		return "", TabloAccount{}, err
+	}
+	if account.Identifier == "" {
+		return "", TabloAccount{}, fmt.Errorf("account identifier missing")
+	}
+	return auth, account, nil
+}
+
+func (s *Service) createCredentialsForSelection(ctx context.Context, auth, accountID string, profile TabloProfile, device TabloDevice) error {
 	selectBody := map[string]string{"pid": profile.Identifier, "sid": device.ServerID}
 	var selected SelectResponse
 	if err := s.lighthouseJSON(ctx, http.MethodPost, "/api/v2/account/select/", auth, selectBody, &selected); err != nil {
@@ -141,7 +240,7 @@ func (s *Service) CreateCredentials(ctx context.Context) error {
 	}
 	creds := Credentials{
 		LighthouseTVAuthorization: auth,
-		LighthouseTVIdentifier:    account.Identifier,
+		LighthouseTVIdentifier:    accountID,
 		Profile:                   profile,
 		Device:                    device,
 		Lighthouse:                selected.Token,
@@ -156,8 +255,11 @@ func (s *Service) CreateCredentials(ctx context.Context) error {
 		creds.Tuners = info.Model.Tuners
 		s.log.Info("Found %s with %d tuners.", info.Model.Name, info.Model.Tuners)
 	}
+	s.mu.Lock()
 	s.creds = creds
 	s.tuners = creds.Tuners
+	s.setup = nil
+	s.mu.Unlock()
 	data, err := json.Marshal(creds)
 	if err != nil {
 		return err
@@ -182,28 +284,40 @@ func (s *Service) ReadCredentials() error {
 	if err != nil {
 		return err
 	}
-	if err := json.Unmarshal(plain, &s.creds); err != nil {
+	var creds Credentials
+	if err := json.Unmarshal(plain, &creds); err != nil {
 		return err
 	}
-	if s.creds.Tuners <= 0 {
-		s.creds.Tuners = 2
+	if creds.Tuners <= 0 {
+		creds.Tuners = 2
 	}
-	s.tuners = s.creds.Tuners
+	s.mu.Lock()
+	s.creds = creds
+	s.tuners = creds.Tuners
+	s.mu.Unlock()
 	return nil
 }
 
 func (s *Service) MakeLineup(ctx context.Context) error {
-	if s.creds.UUID == "" {
+	s.mu.RLock()
+	creds := s.creds
+	includeOTT := s.cfg.IncludeOTT
+	s.mu.RUnlock()
+	if creds.UUID == "" {
 		if err := s.ReadCredentials(); err != nil {
 			return err
 		}
+		s.mu.RLock()
+		creds = s.creds
+		includeOTT = s.cfg.IncludeOTT
+		s.mu.RUnlock()
 	}
-	path := fmt.Sprintf("/api/v2/account/%s/guide/channels/", s.creds.Lighthouse)
+	path := fmt.Sprintf("/api/v2/account/%s/guide/channels/", creds.Lighthouse)
 	var channels []Channel
-	if err := s.lighthouseJSON(ctx, http.MethodGet, path, s.creds.LighthouseTVAuthorization, nil, &channels); err != nil {
+	if err := s.lighthouseJSON(ctx, http.MethodGet, path, creds.LighthouseTVAuthorization, nil, &channels); err != nil {
 		return err
 	}
-	if !s.cfg.IncludeOTT {
+	if !includeOTT {
 		filtered := channels[:0]
 		for _, channel := range channels {
 			if channel.Kind != "ott" {
@@ -230,45 +344,52 @@ func (s *Service) LoadLineup() error {
 }
 
 func (s *Service) ParseLineup(channels []Channel) {
-	s.lineup = map[string]LineupEntry{}
+	cfg := s.Config()
+	s.mu.RLock()
+	creds := s.creds
+	s.mu.RUnlock()
+	lineup := map[string]LineupEntry{}
 	for _, channel := range channels {
 		imageURL := bestLogo(channel.Logos)
 		switch channel.Kind {
 		case "ota":
 			guideNumber := fmt.Sprintf("%d.%d", channel.OTA.Major, channel.OTA.Minor)
-			if s.cfg.CreateXML {
+			if cfg.CreateXML {
 				guideNumber = fmt.Sprintf("%d%d1", channel.OTA.Major, channel.OTA.Minor)
 			}
-			s.lineup[channel.Identifier] = LineupEntry{
+			lineup[channel.Identifier] = LineupEntry{
 				GuideNumber: guideNumber,
 				GuideName:   channel.OTA.Network,
 				ImageURL:    imageURL,
 				Affiliate:   channel.OTA.CallSign,
-				URL:         s.cfg.ServerURL + "/channel/" + url.PathEscape(channel.Identifier),
+				URL:         cfg.ServerURL + "/channel/" + url.PathEscape(channel.Identifier),
 				Type:        "ota",
-				StreamURL:   s.creds.Device.URL + "/guide/channels/" + channel.Identifier + "/watch",
-				SourceURL:   s.creds.Device.URL + "/guide/channels/" + channel.Identifier + "/watch",
+				StreamURL:   creds.Device.URL + "/guide/channels/" + channel.Identifier + "/watch",
+				SourceURL:   creds.Device.URL + "/guide/channels/" + channel.Identifier + "/watch",
 			}
 		case "ott":
-			if !s.cfg.IncludeOTT {
+			if !cfg.IncludeOTT {
 				continue
 			}
 			guideNumber := fmt.Sprintf("%d.%d", channel.OTT.Major, channel.OTT.Minor)
-			if s.cfg.CreateXML {
+			if cfg.CreateXML {
 				guideNumber = fmt.Sprintf("%d%d1", channel.OTT.Major, channel.OTT.Minor)
 			}
-			s.lineup[channel.Identifier] = LineupEntry{
+			lineup[channel.Identifier] = LineupEntry{
 				GuideNumber: guideNumber,
 				GuideName:   channel.OTT.Network,
 				ImageURL:    imageURL,
 				Affiliate:   channel.OTT.CallSign,
-				URL:         s.cfg.ServerURL + "/channel/" + url.PathEscape(channel.Identifier),
+				URL:         cfg.ServerURL + "/channel/" + url.PathEscape(channel.Identifier),
 				Type:        "ott",
 				StreamURL:   channel.OTT.StreamURL,
-				SourceURL:   s.creds.Device.URL + "/guide/channels/" + channel.Identifier + "/watch",
+				SourceURL:   creds.Device.URL + "/guide/channels/" + channel.Identifier + "/watch",
 			}
 		}
 	}
+	s.mu.Lock()
+	s.lineup = lineup
+	s.mu.Unlock()
 }
 
 func (s *Service) Watch(ctx context.Context, channelID string) (LineupEntry, string, error) {
@@ -276,6 +397,9 @@ func (s *Service) Watch(ctx context.Context, channelID string) (LineupEntry, str
 	if !ok {
 		return LineupEntry{}, "", ErrChannelNotFound
 	}
+	s.mu.RLock()
+	creds := s.creds
+	s.mu.RUnlock()
 	body := DeviceWatchRequest{
 		Bandwidth: nil,
 		Extra: map[string]any{
@@ -289,11 +413,11 @@ func (s *Service) Watch(ctx context.Context, channelID string) (LineupEntry, str
 			"deviceMake":        "Apple",
 			"deviceOS":          "iOS",
 		},
-		DeviceID: s.creds.UUID,
+		DeviceID: creds.UUID,
 		Platform: "ios",
 	}
 	var watch WatchResponse
-	err := s.deviceJSON(ctx, http.MethodPost, s.creds.Device.URL, "/guide/channels/"+channelID+"/watch", body, &watch)
+	err := s.deviceJSON(ctx, http.MethodPost, creds.Device.URL, "/guide/channels/"+channelID+"/watch", body, &watch)
 	if err != nil {
 		return entry, "", err
 	}
