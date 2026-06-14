@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -52,6 +54,35 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	adminPassword := bootCfg.AdminPassword
+	hasAdminPassword, err := cfgStore.HasAdminPassword(ctx)
+	if err != nil {
+		logger.Error("admin password lookup failed: %v", err)
+		os.Exit(1)
+	}
+	switch {
+	case adminPassword != "":
+		if err := cfgStore.SetAdminPassword(ctx, adminPassword); err != nil {
+			logger.Error("admin password initialization failed: %v", err)
+			os.Exit(1)
+		}
+		logger.Info("Admin password loaded from configuration and saved to the database.")
+	case !hasAdminPassword:
+		adminPassword, err = randomAdminPassword()
+		if err != nil {
+			logger.Error("admin password generation failed: %v", err)
+			os.Exit(1)
+		}
+		if err := cfgStore.SetAdminPassword(ctx, adminPassword); err != nil {
+			logger.Error("admin password initialization failed: %v", err)
+			os.Exit(1)
+		}
+		logger.Info("Generated admin password: %s", adminPassword)
+		logger.Info("Use this password to log in at %s/admin. It has been saved to the database.", cfg.ServerURL)
+	default:
+		logger.Info("Using admin password from the database.")
+	}
+
 	tabloService := tablo.New(cfg, logger, cfgStore)
 	lineupScheduler := scheduler.New(cfg.OutDir, "schedule_lineup.json", "channel lineup update", cfg.LineupInterval, logger, tabloService.MakeLineup)
 	guideScheduler := scheduler.New(cfg.OutDir, "schedule_guide.json", "guide data update", cfg.GuideInterval, logger, tabloService.CacheGuideData)
@@ -101,4 +132,12 @@ func main() {
 		logger.Error("server failed: %v", err)
 		os.Exit(1)
 	}
+}
+
+func randomAdminPassword() (string, error) {
+	data := make([]byte, 18)
+	if _, err := rand.Read(data); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(data), nil
 }

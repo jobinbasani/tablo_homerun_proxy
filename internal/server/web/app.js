@@ -51,6 +51,11 @@ function showView(view) {
   $("setupPanel").classList.toggle("hidden", view !== "setup");
   $("appPanel").classList.toggle("hidden", view !== "app");
   $("logout").classList.toggle("hidden", view === "login");
+  if (view === "setup") {
+    $("tabloLoginForm").reset();
+    $("deviceList").innerHTML = "";
+    hideInline("setupMessage");
+  }
 }
 
 async function loadSession() {
@@ -224,21 +229,46 @@ $("logout").addEventListener("click", async () => {
 });
 
 $("configForm").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  try {
-    const data = await api("/admin/api/config", { method: "PUT", body: JSON.stringify(readConfigForm()) });
+	event.preventDefault();
+	try {
+		const data = await api("/admin/api/config", { method: "PUT", body: JSON.stringify(readConfigForm()) });
     currentConfig = data.config;
     renderConfig(currentConfig);
     await loadStatus();
     toast(data.restartPending ? "Saved. Restart required for some fields." : "Settings saved.");
   } catch (err) {
     toast(err.message);
-  }
+	}
+});
+
+$("passwordForm").addEventListener("submit", async (event) => {
+	event.preventDefault();
+	const form = event.target;
+	const values = Object.fromEntries(new FormData(form));
+	if (values.newPassword !== values.confirmPassword) {
+		toast("New passwords do not match.");
+		return;
+	}
+	try {
+		await api("/admin/api/password", {
+			method: "POST",
+			body: JSON.stringify({
+				currentPassword: values.currentPassword,
+				newPassword: values.newPassword
+			})
+		});
+		form.reset();
+		toast("Password changed. Sign in again.");
+		showView("login");
+		$("summary").textContent = "Password changed. Sign in with the new password.";
+	} catch (err) {
+		toast(err.message);
+	}
 });
 
 $("tabloLoginForm").addEventListener("submit", (event) => {
-  event.preventDefault();
-  submitTabloLogin(event.target, "deviceList", "setupMessage");
+	event.preventDefault();
+	submitTabloLogin(event.target, "deviceList", "setupMessage");
 });
 
 $("dashboardTabloLoginForm").addEventListener("submit", (event) => {

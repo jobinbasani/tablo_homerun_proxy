@@ -286,15 +286,23 @@ button.secondary, button.ghost {
 .accent-pink::after { background: var(--pink); }
 
 .settings {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-  margin-top: 20px;
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 16px;
+	margin-top: 20px;
+}
+
+.settings-panel + .settings-panel {
+	margin-top: 18px;
+}
+
+.password-settings {
+	grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .actions {
-  display: flex;
-  flex-wrap: wrap;
+	display: flex;
+	flex-wrap: wrap;
   gap: 12px;
   margin-top: 18px;
 }
@@ -370,8 +378,9 @@ button.secondary, button.ghost {
 }
 
 @media (max-width: 900px) {
-  .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .setup-form { grid-template-columns: 1fr; }
+	.grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+	.setup-form { grid-template-columns: 1fr; }
+	.password-settings { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 640px) {

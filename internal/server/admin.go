@@ -101,6 +101,41 @@ func (s *Server) handleAdminSession(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"authenticated": authenticated, "passwordConfigured": hasPassword, "tabloConfigured": hasCredentials})
 }
 
+func (s *Server) handleAdminPassword(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		CurrentPassword string `json:"currentPassword"`
+		NewPassword     string `json:"newPassword"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+	if len(req.NewPassword) < 8 {
+		http.Error(w, "new password must be at least 8 characters", http.StatusBadRequest)
+		return
+	}
+	ok, err := s.store.CheckAdminPassword(r.Context(), req.CurrentPassword)
+	if err != nil {
+		http.Error(w, "could not verify current password", http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		http.Error(w, "current password is invalid", http.StatusUnauthorized)
+		return
+	}
+	if err := s.store.SetAdminPassword(r.Context(), req.NewPassword); err != nil {
+		http.Error(w, "could not update admin password", http.StatusInternalServerError)
+		return
+	}
+	_ = s.store.ClearSession(r.Context())
+	http.SetCookie(w, &http.Cookie{Name: adminCookieName, Value: "", Path: "/admin", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteLaxMode})
+	writeJSON(w, map[string]any{"ok": true})
+}
+
 func (s *Server) handleAdminConfig(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:

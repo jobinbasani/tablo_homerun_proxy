@@ -87,13 +87,6 @@ func (s *Store) Init(ctx context.Context, cfg config.Config) error {
 			return err
 		}
 	}
-	hasPassword, err := s.hasAdminPassword(ctx)
-	if err != nil {
-		return err
-	}
-	if !hasPassword && cfg.AdminPassword != "" {
-		return s.SetAdminPassword(ctx, cfg.AdminPassword)
-	}
 	return nil
 }
 

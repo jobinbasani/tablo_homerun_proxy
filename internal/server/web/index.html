@@ -42,8 +42,8 @@
           <p class="muted">The proxy stays inactive until a Tablo device is selected. Credentials are encrypted and stored in SQLite.</p>
         </div>
         <form id="tabloLoginForm" class="setup-form">
-          <label>Email<input name="username" type="email" required autocomplete="username" placeholder="you@example.com"></label>
-          <label>Password<input name="password" type="password" required autocomplete="current-password" placeholder="Tablo password"></label>
+          <label>Email<input name="username" type="email" required autocomplete="off" placeholder="name@example.com" value=""></label>
+          <label>Password<input name="password" type="password" required autocomplete="new-password" placeholder="Tablo password" value=""></label>
           <button id="findDevices" type="submit">Find Devices</button>
         </form>
         <div id="setupMessage" class="inline-message hidden"></div>
@@ -79,8 +79,8 @@
           <h2>Reconnect Tablo</h2>
           <p class="muted">Use this if you need to change accounts or select another Tablo device.</p>
           <form id="dashboardTabloLoginForm" class="setup-form compact">
-            <label>Email<input name="username" type="email" required autocomplete="username"></label>
-            <label>Password<input name="password" type="password" required autocomplete="current-password"></label>
+            <label>Email<input name="username" type="email" required autocomplete="off" placeholder="name@example.com" value=""></label>
+            <label>Password<input name="password" type="password" required autocomplete="new-password" placeholder="Tablo password" value=""></label>
             <button type="submit">Find Devices</button>
           </form>
           <div id="dashboardSetupMessage" class="inline-message hidden"></div>
@@ -89,10 +89,20 @@
       </section>
 
       <section id="settings" class="tab">
-        <div class="panel">
+        <div class="panel settings-panel">
           <h2>Proxy Settings</h2>
           <form id="configForm" class="settings"></form>
           <div class="actions"><button form="configForm" type="submit">Save Settings</button></div>
+        </div>
+        <div class="panel settings-panel">
+          <h2>Admin Password</h2>
+          <p class="muted">Change the password used to access this admin interface. You will be signed out after the change.</p>
+          <form id="passwordForm" class="settings password-settings">
+            <label>Current Password<input name="currentPassword" type="password" required autocomplete="current-password"></label>
+            <label>New Password<input name="newPassword" type="password" required minlength="8" autocomplete="new-password"></label>
+            <label>Confirm New Password<input name="confirmPassword" type="password" required minlength="8" autocomplete="new-password"></label>
+          </form>
+          <div class="actions"><button form="passwordForm" type="submit">Change Password</button></div>
         </div>
       </section>
 

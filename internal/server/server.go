@@ -65,6 +65,7 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/admin/api/login", s.handleAdminLogin)
 	mux.HandleFunc("/admin/api/logout", s.requireAdmin(s.handleAdminLogout))
 	mux.HandleFunc("/admin/api/session", s.handleAdminSession)
+	mux.HandleFunc("/admin/api/password", s.requireAdmin(s.handleAdminPassword))
 	mux.HandleFunc("/admin/api/config", s.requireAdmin(s.handleAdminConfig))
 	mux.HandleFunc("/admin/api/status", s.requireAdmin(s.handleAdminStatus))
 	mux.HandleFunc("/admin/api/logs", s.requireAdmin(s.handleAdminLogs))
