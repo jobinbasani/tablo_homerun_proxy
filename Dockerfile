@@ -15,7 +15,7 @@ WORKDIR /app
 COPY --from=build /out/tablo-homerun-proxy /usr/local/bin/tablo-homerun-proxy
 RUN mkdir -p /data && chown -R app:app /data
 USER app
-EXPOSE 8181
+EXPOSE 8181/tcp 1900/udp
 VOLUME ["/data"]
 ENTRYPOINT ["tablo-homerun-proxy"]
 CMD ["--outdir", "/data"]

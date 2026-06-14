@@ -2,6 +2,7 @@ services:
   tablo-homerun-proxy:
     build: .
     container_name: tablo-homerun-proxy
+    network_mode: host
     environment:
       NAME: "Tablo 4th Gen Proxy"
       DEVICE_ID: "12345679"
@@ -16,6 +17,4 @@ services:
       ADMIN_PASSWORD: "<admin password>"
     volumes:
       - ./data:/data
-    ports:
-      - "8181:8181/tcp"
     restart: unless-stopped

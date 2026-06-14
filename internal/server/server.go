@@ -57,6 +57,14 @@ func (s *Server) SetProxyReady(ready bool) {
 	s.proxyReady = ready
 }
 
+func (s *Server) ConfigSnapshot() config.Config {
+	return s.config()
+}
+
+func (s *Server) IsProxyReady() bool {
+	return s.isProxyReady()
+}
+
 func (s *Server) Run(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/admin", s.handleAdminIndex)
@@ -68,7 +76,6 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/admin/api/password", s.requireAdmin(s.handleAdminPassword))
 	mux.HandleFunc("/admin/api/config", s.requireAdmin(s.handleAdminConfig))
 	mux.HandleFunc("/admin/api/status", s.requireAdmin(s.handleAdminStatus))
-	mux.HandleFunc("/admin/api/logs", s.requireAdmin(s.handleAdminLogs))
 	mux.HandleFunc("/admin/api/tablo/login", s.requireAdmin(s.handleTabloLogin))
 	mux.HandleFunc("/admin/api/tablo/select-device", s.requireAdmin(s.handleTabloSelectDevice))
 	mux.HandleFunc("/admin/api/actions/refresh-lineup", s.requireAdmin(s.handleRefreshLineup))
@@ -91,9 +98,9 @@ func (s *Server) Run(ctx context.Context) error {
 		_ = server.Shutdown(shutdownCtx)
 	}()
 	cfg := s.config()
-	s.log.Info("Server is running on %s with %d tuners.", cfg.ServerURL, s.tablo.TunerCount())
+	s.log.Always("Server is running on %s with %d tuners.", cfg.ServerURL, s.tablo.TunerCount())
 	if cfg.CreateXML {
-		s.log.Info("Guide data is available at %s/guide.xml.", cfg.ServerURL)
+		s.log.Always("Guide data is available at %s/guide.xml.", cfg.ServerURL)
 	}
 	err := server.ListenAndServe()
 	if err == http.ErrServerClosed {

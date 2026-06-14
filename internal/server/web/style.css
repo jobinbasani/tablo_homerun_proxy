@@ -340,25 +340,6 @@ button.secondary, button.ghost {
 .inline-message.warn { background: rgba(249, 115, 22, 0.13); color: #c2410c; }
 .inline-message.error { background: rgba(239, 68, 68, 0.12); color: #b91c1c; }
 
-.section-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  margin-bottom: 16px;
-}
-
-.logs {
-  min-height: 360px;
-  margin: 0;
-  padding: 18px;
-  border-radius: 18px;
-  background: #0b1020;
-  color: #d7e2ff;
-  overflow: auto;
-  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.16);
-}
-
 .toast {
   position: fixed;
   right: 22px;

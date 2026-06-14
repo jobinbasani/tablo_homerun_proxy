@@ -27,7 +27,6 @@ type adminConfig struct {
 	GuideDays            int    `json:"GuideDays"`
 	IncludePseudoTVGuide bool   `json:"IncludePseudoTVGuide"`
 	LogLevel             string `json:"LogLevel"`
-	SaveLog              bool   `json:"SaveLog"`
 	OutDir               string `json:"OutDir"`
 	TabloDevice          string `json:"TabloDevice"`
 	IPAddress            string `json:"IPAddress"`
@@ -182,15 +181,6 @@ func (s *Server) handleAdminStatus(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) handleAdminLogs(w http.ResponseWriter, _ *http.Request) {
-	lines, err := s.log.RecentLines(200)
-	if err != nil {
-		http.Error(w, "could not read logs", http.StatusInternalServerError)
-		return
-	}
-	writeJSON(w, map[string]any{"lines": lines})
-}
-
 func (s *Server) handleTabloLogin(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -309,7 +299,6 @@ func publicConfig(cfg config.Config) adminConfig {
 		GuideDays:            cfg.GuideDays,
 		IncludePseudoTVGuide: cfg.IncludePseudoTVGuide,
 		LogLevel:             cfg.LogLevel,
-		SaveLog:              cfg.SaveLog,
 		OutDir:               cfg.OutDir,
 		TabloDevice:          cfg.TabloDevice,
 		IPAddress:            cfg.IPAddress,
@@ -330,7 +319,6 @@ func configFromAdmin(req adminConfig, current config.Config) config.Config {
 	next.GuideDays = req.GuideDays
 	next.IncludePseudoTVGuide = req.IncludePseudoTVGuide
 	next.LogLevel = req.LogLevel
-	next.SaveLog = req.SaveLog
 	next.OutDir = req.OutDir
 	next.TabloDevice = req.TabloDevice
 	next.IPAddress = req.IPAddress

@@ -22,7 +22,6 @@ type Config struct {
 	GuideDays            int
 	IncludePseudoTVGuide bool
 	LogLevel             string
-	SaveLog              bool
 	OutDir               string
 	TabloDevice          string
 	UserName             string
@@ -47,8 +46,7 @@ type EnvConfig struct {
 	CreateXML            bool   `envconfig:"CREATE_XML" default:"false"`
 	GuideDays            int    `envconfig:"GUIDE_DAYS" default:"2"`
 	IncludePseudoTVGuide bool   `envconfig:"INCLUDE_PSEUDOTV_GUIDE" default:"false"`
-	LogLevel             string `envconfig:"LOG_LEVEL" default:"error"`
-	SaveLog              bool   `envconfig:"SAVE_LOG" default:"false"`
+	LogLevel             string `envconfig:"LOG_LEVEL" default:"info"`
 	OutDir               string `envconfig:"OUT_DIR" default:""`
 	TabloDevice          string `envconfig:"TABLO_DEVICE" default:""`
 	UserName             string `envconfig:"USER_NAME" default:""`
@@ -98,7 +96,6 @@ func Load() (Config, error) {
 	guideDays := flag.Int("days", envCfg.GuideDays, "guide days to cache")
 	pseudo := flag.Bool("pseudo", envCfg.IncludePseudoTVGuide, "include .pseudotv/xmltv.xml")
 	logLevel := flag.String("level", envCfg.LogLevel, "log level: info,error,warn,debug")
-	saveLog := flag.Bool("log", envCfg.SaveLog, "write logs to disk")
 	outDir := flag.String("outdir", envCfg.OutDir, "output directory")
 	tabloDevice := flag.String("device", envCfg.TabloDevice, "Tablo server ID")
 	user := flag.String("user", envCfg.UserName, "Tablo username")
@@ -118,7 +115,6 @@ func Load() (Config, error) {
 	cfg.GuideDays = clamp(*guideDays, 1, 7)
 	cfg.IncludePseudoTVGuide = *pseudo
 	cfg.LogLevel = normalizeLogLevel(*logLevel)
-	cfg.SaveLog = *saveLog
 	cfg.TabloDevice = *tabloDevice
 	cfg.UserName = *user
 	cfg.UserPass = *pass
@@ -167,8 +163,7 @@ func ensureEnvFile(path string) error {
 		`CREATE_XML="false"`,
 		`GUIDE_DAYS="2"`,
 		`INCLUDE_PSEUDOTV_GUIDE="false"`,
-		`LOG_LEVEL="error"`,
-		`SAVE_LOG="false"`,
+		`LOG_LEVEL="info"`,
 		`OUT_DIR=""`,
 		`TABLO_DEVICE=""`,
 		`USER_NAME=""`,

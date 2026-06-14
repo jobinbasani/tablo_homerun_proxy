@@ -12,7 +12,6 @@ const fields = [
   ["IncludePseudoTVGuide", "checkbox", "Include PseudoTV guide"],
   ["IncludeOTT", "checkbox", "Include OTT channels"],
   ["LogLevel", "select", "Log level"],
-  ["SaveLog", "checkbox", "Save logs to disk"],
   ["OutDir", "text", "Output directory"],
   ["TabloDevice", "text", "Selected Tablo device"]
 ];
@@ -297,13 +296,4 @@ $("refreshGuide").onclick = async () => {
 };
 
 $("reloadStatus").onclick = loadStatus;
-$("reloadLogs").onclick = async () => {
-  try {
-    const data = await api("/admin/api/logs");
-    $("logOutput").textContent = (data.lines || []).join("\n");
-  } catch (err) {
-    toast(err.message);
-  }
-};
-
 loadSession().catch((err) => toast(err.message));

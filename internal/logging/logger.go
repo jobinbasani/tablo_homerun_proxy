@@ -1,11 +1,10 @@
 package logging
 
 import (
-	"bufio"
+	"encoding/json"
 	"fmt"
-	"log"
+	"io"
 	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -13,95 +12,76 @@ import (
 )
 
 type Logger struct {
-	level int
-	file  *os.File
-	loc   string
-	mu    sync.Mutex
+	minSeverity int
+	mu          sync.Mutex
+}
+
+type entry struct {
+	Time    string `json:"ts"`
+	Level   string `json:"level"`
+	Message string `json:"msg"`
+	Service string `json:"service"`
 }
 
 func New(cfg config.Config) (*Logger, error) {
-	logger := &Logger{level: logLevelNumber(cfg.LogLevel)}
-	if cfg.SaveLog {
-		logDir := filepath.Join(cfg.OutDir, "logs")
-		if err := os.MkdirAll(logDir, 0o755); err != nil {
-			return nil, err
-		}
-		path := filepath.Join(logDir, time.Now().Format("2006.01.02-03.04.05PM")+"-"+cfg.LogLevel+".log")
-		file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-		if err != nil {
-			return nil, err
-		}
-		logger.file = file
-		logger.loc = path
-	}
-	return logger, nil
+	return &Logger{minSeverity: severity(cfg.LogLevel)}, nil
 }
 
 func (l *Logger) Close() error {
-	if l.file == nil {
-		return nil
-	}
-	return l.file.Close()
-}
-
-func (l *Logger) RecentLines(limit int) ([]string, error) {
-	if l.file == nil || l.loc == "" || limit <= 0 {
-		return []string{}, nil
-	}
-	file, err := os.Open(l.loc)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-	var lines []string
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
-		if len(lines) > limit {
-			lines = lines[1:]
-		}
-	}
-	return lines, scanner.Err()
+	return nil
 }
 
 func (l *Logger) Info(format string, args ...any) {
-	l.write(0, "info", format, args...)
+	l.write(0, "info", os.Stdout, format, args...)
 }
 
 func (l *Logger) Error(format string, args ...any) {
-	l.write(1, "error", format, args...)
+	l.write(3, "error", os.Stderr, format, args...)
 }
 
 func (l *Logger) Warn(format string, args ...any) {
-	l.write(2, "warn", format, args...)
+	l.write(2, "warn", os.Stdout, format, args...)
 }
 
 func (l *Logger) Debug(format string, args ...any) {
-	l.write(3, "debug", format, args...)
+	l.write(-1, "debug", os.Stdout, format, args...)
 }
 
-func (l *Logger) write(required int, label string, format string, args ...any) {
-	if l.level < required {
+func (l *Logger) Always(format string, args ...any) {
+	l.writeBypass("info", os.Stdout, format, args...)
+}
+
+func (l *Logger) write(messageSeverity int, label string, out io.Writer, format string, args ...any) {
+	if messageSeverity < l.minSeverity {
 		return
 	}
-	message := fmt.Sprintf(format, args...)
-	line := fmt.Sprintf("[%s] %s", label, message)
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	log.Println(line)
-	if l.file != nil {
-		_, _ = l.file.WriteString(time.Now().Format(time.RFC3339) + " " + line + "\n")
-	}
+	l.writeBypass(label, out, format, args...)
 }
 
-func logLevelNumber(level string) int {
+func (l *Logger) writeBypass(label string, out io.Writer, format string, args ...any) {
+	record := entry{
+		Time:    time.Now().UTC().Format(time.RFC3339Nano),
+		Level:   label,
+		Message: fmt.Sprintf(format, args...),
+		Service: "tablo-homerun-proxy",
+	}
+	data, err := json.Marshal(record)
+	if err != nil {
+		data = []byte(fmt.Sprintf(`{"ts":"%s","level":"error","msg":"failed to encode log record","service":"tablo-homerun-proxy"}`, record.Time))
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	_, _ = out.Write(append(data, '\n'))
+}
+
+func severity(level string) int {
 	switch level {
 	case "debug":
-		return 3
+		return -1
 	case "warn":
 		return 2
 	case "error":
-		return 1
+		return 3
 	default:
 		return 0
 	}

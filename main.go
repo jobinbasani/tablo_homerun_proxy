@@ -14,6 +14,7 @@ import (
 	"github.com/jobinbasani/tablo_homerun_proxy/internal/logging"
 	"github.com/jobinbasani/tablo_homerun_proxy/internal/scheduler"
 	"github.com/jobinbasani/tablo_homerun_proxy/internal/server"
+	"github.com/jobinbasani/tablo_homerun_proxy/internal/ssdp"
 	"github.com/jobinbasani/tablo_homerun_proxy/internal/store"
 	"github.com/jobinbasani/tablo_homerun_proxy/internal/tablo"
 )
@@ -77,8 +78,8 @@ func main() {
 			logger.Error("admin password initialization failed: %v", err)
 			os.Exit(1)
 		}
-		logger.Info("Generated admin password: %s", adminPassword)
-		logger.Info("Use this password to log in at %s/admin. It has been saved to the database.", cfg.ServerURL)
+		logger.Always("Generated admin password: %s", adminPassword)
+		logger.Always("Use this password to log in at %s/admin. It has been saved to the database.", cfg.ServerURL)
 	default:
 		logger.Info("Using admin password from the database.")
 	}
@@ -115,17 +116,19 @@ func main() {
 			schedulersStarted = true
 		}
 		httpServer.SetProxyReady(true)
-		logger.Info("Proxy is active.")
+		logger.Always("Proxy is active.")
 		return nil
 	}
 	httpServer.SetSetupHandler(activateProxy)
+	ssdpService := ssdp.New(httpServer.ConfigSnapshot, httpServer.IsProxyReady, logger)
+	go ssdpService.Run(ctx)
 	if err := activateProxy(ctx); err != nil {
 		httpServer.SetProxyReady(false)
 		if errors.Is(err, tablo.ErrCredentialsMissing) {
-			logger.Info("Admin interface is ready. Configure Tablo credentials to start the proxy.")
+			logger.Always("Admin interface is ready. Configure Tablo credentials to start the proxy.")
 		} else {
 			logger.Error("proxy activation failed: %v", err)
-			logger.Info("Admin interface is ready. Fix setup and retry from /admin.")
+			logger.Always("Admin interface is ready. Fix setup and retry from /admin.")
 		}
 	}
 	if err := httpServer.Run(ctx); err != nil {
