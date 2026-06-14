@@ -18,6 +18,7 @@ import (
 )
 
 var ErrAdminPasswordNotSet = errors.New("admin password is not set")
+var ErrTabloCredentialsNotFound = errors.New("tablo credentials are not configured")
 
 type Store struct {
 	db *sql.DB
@@ -63,6 +64,11 @@ CREATE TABLE IF NOT EXISTS admin_auth (
 	password_hash TEXT NOT NULL,
 	session_token_hash TEXT,
 	session_expires_at TEXT,
+	updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS tablo_credentials (
+	id INTEGER PRIMARY KEY CHECK (id = 1),
+	encrypted_json BLOB NOT NULL,
 	updated_at TEXT NOT NULL
 );
 `)
@@ -126,6 +132,35 @@ ON CONFLICT(id) DO UPDATE SET
 	updated_at = excluded.updated_at
 `, string(data), pending, time.Now().UTC().Format(time.RFC3339))
 	return err
+}
+
+func (s *Store) SaveTabloCredentials(ctx context.Context, encrypted []byte) error {
+	_, err := s.db.ExecContext(ctx, `
+INSERT INTO tablo_credentials (id, encrypted_json, updated_at)
+VALUES (1, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+	encrypted_json = excluded.encrypted_json,
+	updated_at = excluded.updated_at
+`, encrypted, time.Now().UTC().Format(time.RFC3339))
+	return err
+}
+
+func (s *Store) LoadTabloCredentials(ctx context.Context) ([]byte, error) {
+	var encrypted []byte
+	err := s.db.QueryRowContext(ctx, `SELECT encrypted_json FROM tablo_credentials WHERE id = 1`).Scan(&encrypted)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrTabloCredentialsNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return encrypted, nil
+}
+
+func (s *Store) HasTabloCredentials(ctx context.Context) (bool, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM tablo_credentials WHERE id = 1`).Scan(&count)
+	return count > 0, err
 }
 
 func (s *Store) SetAdminPassword(ctx context.Context, password string) error {

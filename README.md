@@ -5,7 +5,7 @@ Go implementation of a Tablo 4th Gen to HDHomeRun-compatible proxy for Plex Live
 ## What it does
 
 - Exposes HDHomeRun-style endpoints for Plex: `/discover.json`, `/lineup.json`, `/lineup_status.json`, and `/channel/:id`.
-- Authenticates with Lighthouse/Tablo, stores encrypted credentials in `creds.bin`, and caches `lineup.json`.
+- Authenticates with Lighthouse/Tablo, stores encrypted credentials in SQLite, and caches `lineup.json`.
 - Requests live Tablo watch URLs on demand and pipes them through `ffmpeg` as MPEG-TS.
 - Optionally builds an XMLTV guide at `/guide.xml`.
 - Includes an authenticated admin UI at `/admin` for setup, settings, status, actions, and logs.
@@ -37,7 +37,7 @@ Open `http://<host>:8181/admin` to log in, connect your Tablo account, select a 
 
 - `--creds`: recreate credentials.
 - `--lineup`: force a lineup and guide refresh, then exit.
-- `--outdir`: directory for `creds.bin`, `lineup.json`, `guide.xml`, schedules, and logs.
+- `--outdir`: directory for `lineup.json`, `guide.xml`, schedules, and logs.
 - `--db`: SQLite database path. Defaults to `<outdir>/proxy.db`.
 - `--admin_password`: first-run admin password seed.
 - `--xml`: enable XMLTV guide generation.

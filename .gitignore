@@ -1,1 +1,7 @@
 /.idea/
+.env
+creds.bin
+guide.xml
+lineup.json
+proxy.db
+schedule_*.json

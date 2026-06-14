@@ -97,7 +97,8 @@ func (s *Server) handleAdminLogout(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAdminSession(w http.ResponseWriter, r *http.Request) {
 	authenticated, _ := s.authenticated(r)
 	hasPassword, _ := s.store.HasAdminPassword(r.Context())
-	writeJSON(w, map[string]any{"authenticated": authenticated, "passwordConfigured": hasPassword})
+	hasCredentials, _ := s.store.HasTabloCredentials(r.Context())
+	writeJSON(w, map[string]any{"authenticated": authenticated, "passwordConfigured": hasPassword, "tabloConfigured": hasCredentials})
 }
 
 func (s *Server) handleAdminConfig(w http.ResponseWriter, r *http.Request) {
@@ -130,17 +131,19 @@ func (s *Server) handleAdminConfig(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleAdminStatus(w http.ResponseWriter, r *http.Request) {
 	cfg := s.config()
+	hasCredentials, _ := s.store.HasTabloCredentials(r.Context())
 	writeJSON(w, map[string]any{
-		"serverURL":      cfg.ServerURL,
-		"proxyReady":     s.isProxyReady(),
-		"tunerCount":     s.tablo.TunerCount(),
-		"activeStreams":  s.activeStreams(),
-		"lineupLoaded":   len(s.tablo.Lineup()) > 0,
-		"lineupExists":   s.tablo.LineupExists(),
-		"guideExists":    s.tablo.GuideExists(),
-		"createXML":      cfg.CreateXML,
-		"includeOTT":     cfg.IncludeOTT,
-		"restartPending": s.restartPending(),
+		"serverURL":       cfg.ServerURL,
+		"proxyReady":      s.isProxyReady(),
+		"tabloConfigured": hasCredentials,
+		"tunerCount":      s.tablo.TunerCount(),
+		"activeStreams":   s.activeStreams(),
+		"lineupLoaded":    len(s.tablo.Lineup()) > 0,
+		"lineupExists":    s.tablo.LineupExists(),
+		"guideExists":     s.tablo.GuideExists(),
+		"createXML":       cfg.CreateXML,
+		"includeOTT":      cfg.IncludeOTT,
+		"restartPending":  s.restartPending(),
 	})
 }
 

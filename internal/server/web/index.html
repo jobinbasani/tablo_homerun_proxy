@@ -8,24 +8,50 @@
 </head>
 <body>
   <main class="shell">
-    <header class="topbar">
+    <header class="hero">
       <div>
-        <h1>Tablo HomeRun Proxy</h1>
-        <p id="summary">Admin console</p>
+        <p class="eyebrow">Tablo HomeRun Proxy</p>
+        <h1>Stream control, tuned for Plex.</h1>
+        <p id="summary" class="summary">Admin console</p>
       </div>
       <button id="logout" class="ghost hidden">Log out</button>
     </header>
 
-    <section id="loginPanel" class="panel narrow">
-      <h2>Admin Login</h2>
-      <p class="muted">Enter the admin password. On first run, this initializes the admin password if one was not provided.</p>
-      <form id="loginForm" class="stack">
-        <label>Password<input type="password" name="password" required autocomplete="current-password"></label>
-        <button type="submit">Continue</button>
-      </form>
+    <section id="loginPanel" class="center-panel">
+      <div class="panel auth-card">
+        <div class="badge">Secure Admin</div>
+        <h2>Welcome back</h2>
+        <p class="muted">Enter the admin password. On first run, this password initializes the admin console.</p>
+        <form id="loginForm" class="stack">
+          <label>Admin Password<input type="password" name="password" required autocomplete="current-password"></label>
+          <button type="submit">Continue</button>
+        </form>
+      </div>
     </section>
 
-    <section id="appPanel" class="hidden">
+    <section id="setupPanel" class="center-panel hidden">
+      <div class="panel setup-card">
+        <div class="setup-progress">
+          <span class="step-pill active">1 Account</span>
+          <span class="step-line"></span>
+          <span id="deviceStep" class="step-pill">2 Device</span>
+        </div>
+        <div class="setup-copy">
+          <p class="eyebrow">First-time setup</p>
+          <h2>Connect your Tablo account</h2>
+          <p class="muted">The proxy stays inactive until a Tablo device is selected. Credentials are encrypted and stored in SQLite.</p>
+        </div>
+        <form id="tabloLoginForm" class="setup-form">
+          <label>Email<input name="username" type="email" required autocomplete="username" placeholder="you@example.com"></label>
+          <label>Password<input name="password" type="password" required autocomplete="current-password" placeholder="Tablo password"></label>
+          <button id="findDevices" type="submit">Find Devices</button>
+        </form>
+        <div id="setupMessage" class="inline-message hidden"></div>
+        <div id="deviceList" class="device-list"></div>
+      </div>
+    </section>
+
+    <section id="appPanel" class="dashboard hidden">
       <nav class="tabs">
         <button data-tab="status" class="active">Status</button>
         <button data-tab="setup">Setup</button>
@@ -35,11 +61,11 @@
 
       <section id="status" class="tab active">
         <div class="grid">
-          <article class="card"><span>Server URL</span><strong id="serverURL">-</strong></article>
-          <article class="card"><span>Tuners</span><strong id="tunerCount">-</strong></article>
-          <article class="card"><span>Proxy Ready</span><strong id="proxyReady">-</strong></article>
-          <article class="card warn"><span>Restart Required</span><strong id="restartPending">-</strong></article>
-          <article class="card"><span>Active Streams</span><strong id="activeStreams">-</strong></article>
+          <article class="card accent-blue"><span>Server URL</span><strong id="serverURL">-</strong></article>
+          <article class="card accent-purple"><span>Tuners</span><strong id="tunerCount">-</strong></article>
+          <article class="card accent-green"><span>Proxy Ready</span><strong id="proxyReady">-</strong></article>
+          <article class="card accent-orange"><span>Restart Required</span><strong id="restartPending">-</strong></article>
+          <article class="card accent-pink"><span>Active Streams</span><strong id="activeStreams">-</strong></article>
         </div>
         <div class="actions">
           <button id="refreshLineup">Refresh Lineup</button>
@@ -50,24 +76,34 @@
 
       <section id="setup" class="tab">
         <div class="panel">
-          <h2>Tablo Account</h2>
-          <form id="tabloLoginForm" class="stack two">
+          <h2>Reconnect Tablo</h2>
+          <p class="muted">Use this if you need to change accounts or select another Tablo device.</p>
+          <form id="dashboardTabloLoginForm" class="setup-form compact">
             <label>Email<input name="username" type="email" required autocomplete="username"></label>
             <label>Password<input name="password" type="password" required autocomplete="current-password"></label>
             <button type="submit">Find Devices</button>
           </form>
-          <div id="deviceList" class="device-list"></div>
+          <div id="dashboardSetupMessage" class="inline-message hidden"></div>
+          <div id="dashboardDeviceList" class="device-list"></div>
         </div>
       </section>
 
       <section id="settings" class="tab">
-        <form id="configForm" class="settings"></form>
-        <div class="actions"><button form="configForm" type="submit">Save Settings</button></div>
+        <div class="panel">
+          <h2>Proxy Settings</h2>
+          <form id="configForm" class="settings"></form>
+          <div class="actions"><button form="configForm" type="submit">Save Settings</button></div>
+        </div>
       </section>
 
       <section id="logs" class="tab">
-        <div class="actions"><button id="reloadLogs" class="secondary">Reload Logs</button></div>
-        <pre id="logOutput" class="logs"></pre>
+        <div class="panel">
+          <div class="section-heading">
+            <h2>Logs</h2>
+            <button id="reloadLogs" class="secondary">Reload Logs</button>
+          </div>
+          <pre id="logOutput" class="logs"></pre>
+        </div>
       </section>
     </section>
 

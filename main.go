@@ -52,7 +52,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	tabloService := tablo.New(cfg, logger)
+	tabloService := tablo.New(cfg, logger, cfgStore)
 	lineupScheduler := scheduler.New(cfg.OutDir, "schedule_lineup.json", "channel lineup update", cfg.LineupInterval, logger, tabloService.MakeLineup)
 	guideScheduler := scheduler.New(cfg.OutDir, "schedule_guide.json", "guide data update", cfg.GuideInterval, logger, tabloService.CacheGuideData)
 

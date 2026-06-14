@@ -85,8 +85,8 @@ func Load() (Config, error) {
 	}
 
 	cfg := Config{}
-	flag.BoolVar(&cfg.ForceCreds, "creds", false, "force creation of a new credentials file")
-	flag.BoolVar(&cfg.ForceCreds, "c", false, "force creation of a new credentials file")
+	flag.BoolVar(&cfg.ForceCreds, "creds", false, "force recreation of Tablo credentials")
+	flag.BoolVar(&cfg.ForceCreds, "c", false, "force recreation of Tablo credentials")
 	flag.BoolVar(&cfg.ForceLineup, "lineup", false, "force creation of a fresh lineup file")
 	flag.BoolVar(&cfg.ForceLineup, "l", false, "force creation of a fresh lineup file")
 

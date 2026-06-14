@@ -1,7 +1,6 @@
 package tablo
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -10,9 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -25,14 +22,21 @@ var ErrChannelNotFound = errors.New("channel not found")
 var ErrCredentialsMissing = errors.New("tablo credentials are not configured")
 
 type Service struct {
-	cfg    config.Config
-	log    *logging.Logger
-	http   *http.Client
-	creds  Credentials
-	lineup map[string]LineupEntry
-	tuners int
-	setup  *pendingSetup
-	mu     sync.RWMutex
+	cfg             config.Config
+	log             *logging.Logger
+	credentialStore CredentialStore
+	http            *http.Client
+	creds           Credentials
+	lineup          map[string]LineupEntry
+	tuners          int
+	setup           *pendingSetup
+	mu              sync.RWMutex
+}
+
+type CredentialStore interface {
+	SaveTabloCredentials(context.Context, []byte) error
+	LoadTabloCredentials(context.Context) ([]byte, error)
+	HasTabloCredentials(context.Context) (bool, error)
 }
 
 type pendingSetup struct {
@@ -41,20 +45,15 @@ type pendingSetup struct {
 	profile       TabloProfile
 }
 
-func New(cfg config.Config, logger *logging.Logger) *Service {
+func New(cfg config.Config, logger *logging.Logger, credentialStore CredentialStore) *Service {
 	return &Service{
-		cfg:    cfg,
-		log:    logger,
-		http:   &http.Client{Timeout: 60 * time.Second},
-		lineup: map[string]LineupEntry{},
-		tuners: 2,
+		cfg:             cfg,
+		log:             logger,
+		credentialStore: credentialStore,
+		http:            &http.Client{Timeout: 60 * time.Second},
+		lineup:          map[string]LineupEntry{},
+		tuners:          2,
 	}
-}
-
-func (s *Service) credsPath() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return filepath.Join(s.cfg.OutDir, "creds.bin")
 }
 
 func (s *Service) lineupPath() string {
@@ -112,53 +111,19 @@ func (s *Service) TunerCount() int {
 	return s.tuners
 }
 
-func (s *Service) EnsureCredentials(ctx context.Context) error {
-	if s.cfg.ForceCreds || !storage.FileExists(s.credsPath()) {
-		s.log.Info("No usable credentials file found. Logging into Tablo.")
-		return s.CreateCredentials(ctx)
-	}
-	return s.ReadCredentials()
-}
-
 func (s *Service) EnsureCredentialsNonInteractive(ctx context.Context) error {
 	cfg := s.Config()
-	if storage.FileExists(s.credsPath()) && !cfg.ForceCreds {
-		return s.ReadCredentials()
+	hasCredentials, err := s.credentialStore.HasTabloCredentials(ctx)
+	if err != nil {
+		return err
+	}
+	if hasCredentials && !cfg.ForceCreds {
+		return s.ReadCredentials(ctx)
 	}
 	if cfg.UserName == "" || cfg.UserPass == "" {
 		return ErrCredentialsMissing
 	}
 	auth, account, err := s.loginAccount(ctx, cfg.UserName, cfg.UserPass)
-	if err != nil {
-		return err
-	}
-	profile, err := s.selectProfile(account.Profiles)
-	if err != nil {
-		return err
-	}
-	device, err := s.selectDevice(account.Devices)
-	if err != nil {
-		return err
-	}
-	return s.createCredentialsForSelection(ctx, auth, account.Identifier, profile, device)
-}
-
-func (s *Service) CreateCredentials(ctx context.Context) error {
-	cfg := s.Config()
-	user := cfg.UserName
-	pass := cfg.UserPass
-	reader := bufio.NewReader(os.Stdin)
-	if user == "" {
-		fmt.Print("What is your email? ")
-		line, _ := reader.ReadString('\n')
-		user = strings.TrimSpace(line)
-	}
-	if pass == "" {
-		fmt.Print("What is your password? ")
-		line, _ := reader.ReadString('\n')
-		pass = strings.TrimSpace(line)
-	}
-	auth, account, err := s.loginAccount(ctx, user, pass)
 	if err != nil {
 		return err
 	}
@@ -268,15 +233,15 @@ func (s *Service) createCredentialsForSelection(ctx context.Context, auth, accou
 	if err != nil {
 		return err
 	}
-	if err := storage.WriteFile(s.credsPath(), encrypted, 0o600); err != nil {
+	if err := s.credentialStore.SaveTabloCredentials(ctx, encrypted); err != nil {
 		return err
 	}
-	s.log.Info("Credentials encrypted at %s.", s.credsPath())
+	s.log.Info("Credentials encrypted in the application database.")
 	return nil
 }
 
-func (s *Service) ReadCredentials() error {
-	encrypted, err := os.ReadFile(s.credsPath())
+func (s *Service) ReadCredentials(ctx context.Context) error {
+	encrypted, err := s.credentialStore.LoadTabloCredentials(ctx)
 	if err != nil {
 		return err
 	}
@@ -304,7 +269,7 @@ func (s *Service) MakeLineup(ctx context.Context) error {
 	includeOTT := s.cfg.IncludeOTT
 	s.mu.RUnlock()
 	if creds.UUID == "" {
-		if err := s.ReadCredentials(); err != nil {
+		if err := s.ReadCredentials(ctx); err != nil {
 			return err
 		}
 		s.mu.RLock()
@@ -512,15 +477,8 @@ func (s *Service) selectProfile(profiles []TabloProfile) (TabloProfile, error) {
 	if len(profiles) == 0 {
 		return TabloProfile{}, fmt.Errorf("no Tablo profiles found")
 	}
-	if len(profiles) == 1 || s.cfg.UserName != "" {
-		s.log.Info("Using profile %s.", profiles[0].Name)
-		return profiles[0], nil
-	}
-	for index, profile := range profiles {
-		fmt.Printf("%d) %s\n", index+1, profile.Name)
-	}
-	index := promptIndex("Select profile", len(profiles))
-	return profiles[index], nil
+	s.log.Info("Using profile %s.", profiles[0].Name)
+	return profiles[0], nil
 }
 
 func (s *Service) selectDevice(devices []TabloDevice) (TabloDevice, error) {
@@ -536,27 +494,8 @@ func (s *Service) selectDevice(devices []TabloDevice) (TabloDevice, error) {
 		}
 		return TabloDevice{}, fmt.Errorf("device %s was not found", s.cfg.TabloDevice)
 	}
-	if len(devices) == 1 || s.cfg.UserName != "" {
-		s.log.Info("Using device %s %s @ %s.", devices[0].Name, devices[0].ServerID, devices[0].URL)
-		return devices[0], nil
-	}
-	for index, device := range devices {
-		fmt.Printf("%d) %s %s @ %s\n", index+1, device.Name, device.ServerID, device.URL)
-	}
-	index := promptIndex("Select device", len(devices))
-	return devices[index], nil
-}
-
-func promptIndex(label string, max int) int {
-	reader := bufio.NewReader(os.Stdin)
-	for {
-		fmt.Printf("%s [1-%d]: ", label, max)
-		line, _ := reader.ReadString('\n')
-		var choice int
-		if _, err := fmt.Sscanf(strings.TrimSpace(line), "%d", &choice); err == nil && choice >= 1 && choice <= max {
-			return choice - 1
-		}
-	}
+	s.log.Info("Using device %s %s @ %s.", devices[0].Name, devices[0].ServerID, devices[0].URL)
+	return devices[0], nil
 }
 
 func bestLogo(logos []ChannelLogo) string {

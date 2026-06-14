@@ -1,50 +1,91 @@
 const $ = (id) => document.getElementById(id);
-const toast = (msg) => {
-  $("toast").textContent = msg;
-  $("toast").classList.remove("hidden");
-  setTimeout(() => $("toast").classList.add("hidden"), 3600);
-};
 
 const fields = [
-  ["Name", "text"], ["DeviceID", "text"], ["Port", "text"], ["IPAddress", "text"],
-  ["LineupInterval", "duration"], ["GuideInterval", "duration"], ["GuideDays", "number"],
-  ["CreateXML", "checkbox"], ["IncludePseudoTVGuide", "checkbox"], ["IncludeOTT", "checkbox"],
-  ["LogLevel", "select"], ["SaveLog", "checkbox"], ["OutDir", "text"], ["TabloDevice", "text"]
+  ["Name", "text", "Device name"],
+  ["DeviceID", "text", "HDHomeRun device ID"],
+  ["Port", "text", "HTTP port"],
+  ["IPAddress", "text", "Advertised IP address"],
+  ["LineupIntervalDays", "number", "Lineup refresh days"],
+  ["GuideIntervalHours", "number", "Guide refresh hours"],
+  ["GuideDays", "number", "Guide days"],
+  ["CreateXML", "checkbox", "Create XMLTV guide"],
+  ["IncludePseudoTVGuide", "checkbox", "Include PseudoTV guide"],
+  ["IncludeOTT", "checkbox", "Include OTT channels"],
+  ["LogLevel", "select", "Log level"],
+  ["SaveLog", "checkbox", "Save logs to disk"],
+  ["OutDir", "text", "Output directory"],
+  ["TabloDevice", "text", "Selected Tablo device"]
 ];
 
 let currentConfig = {};
 
+function toast(message) {
+  $("toast").textContent = message;
+  $("toast").classList.remove("hidden");
+  setTimeout(() => $("toast").classList.add("hidden"), 3600);
+}
+
+function showInline(id, message, tone = "info") {
+  const el = $(id);
+  el.textContent = message;
+  el.className = `inline-message ${tone}`;
+  el.classList.remove("hidden");
+}
+
+function hideInline(id) {
+  $(id).classList.add("hidden");
+}
+
 async function api(path, opts = {}) {
   const res = await fetch(path, {
+    credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
     ...opts
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) throw new Error((await res.text()).trim() || res.statusText);
   return res.json();
 }
 
-function showApp(show) {
-  $("loginPanel").classList.toggle("hidden", show);
-  $("appPanel").classList.toggle("hidden", !show);
-  $("logout").classList.toggle("hidden", !show);
+function showView(view) {
+  $("loginPanel").classList.toggle("hidden", view !== "login");
+  $("setupPanel").classList.toggle("hidden", view !== "setup");
+  $("appPanel").classList.toggle("hidden", view !== "app");
+  $("logout").classList.toggle("hidden", view === "login");
 }
 
 async function loadSession() {
   const session = await api("/admin/api/session");
-  showApp(session.authenticated);
-  if (session.authenticated) {
-    await Promise.all([loadConfig(), loadStatus()]);
+  if (!session.authenticated) {
+    showView("login");
+    $("summary").textContent = session.passwordConfigured ? "Sign in to manage your proxy." : "Create the admin password to begin.";
+    return;
   }
+  if (!session.tabloConfigured) {
+    showView("setup");
+    $("summary").textContent = "Connect Tablo to unlock the proxy dashboard.";
+    return;
+  }
+  showView("app");
+  await Promise.all([loadConfig(), loadStatus()]);
 }
 
 async function loadStatus() {
   const status = await api("/admin/api/status");
+  if (!status.tabloConfigured) {
+    showView("setup");
+    $("summary").textContent = "Connect Tablo to unlock the proxy dashboard.";
+    return;
+  }
   $("serverURL").textContent = status.serverURL || "-";
   $("tunerCount").textContent = status.tunerCount ?? "-";
-  $("proxyReady").textContent = status.proxyReady ? "Yes" : "No";
+  $("proxyReady").textContent = status.proxyReady ? "Online" : "Setup needed";
   $("activeStreams").textContent = status.activeStreams ?? "-";
   $("restartPending").textContent = status.restartPending ? "Yes" : "No";
-  $("summary").textContent = !status.proxyReady ? "Admin ready. Complete Tablo setup to start the proxy." : status.restartPending ? "Proxy running. Restart required for some changes." : "Proxy running.";
+  $("summary").textContent = status.proxyReady
+    ? status.restartPending
+      ? "Proxy running. Restart required for some changes."
+      : "Proxy running and ready for Plex."
+    : "Tablo is configured. Proxy activation needs attention.";
 }
 
 async function loadConfig() {
@@ -56,9 +97,9 @@ async function loadConfig() {
 function renderConfig(cfg) {
   const form = $("configForm");
   form.innerHTML = "";
-  for (const [name, kind] of fields) {
+  for (const [name, kind, labelText] of fields) {
     const label = document.createElement("label");
-    label.textContent = name;
+    label.textContent = labelText;
     let input;
     if (kind === "select") {
       input = document.createElement("select");
@@ -70,7 +111,7 @@ function renderConfig(cfg) {
       }
     } else {
       input = document.createElement("input");
-      input.type = kind === "checkbox" ? "checkbox" : kind === "number" ? "number" : "text";
+      input.type = kind === "checkbox" ? "checkbox" : kind;
     }
     input.name = name;
     if (kind === "checkbox") input.checked = Boolean(cfg[name]);
@@ -83,12 +124,78 @@ function renderConfig(cfg) {
 function readConfigForm() {
   const next = { ...currentConfig };
   for (const [name, kind] of fields) {
-    const input = document.querySelector(`[name="${name}"]`);
+    const input = document.querySelector(`#configForm [name="${name}"]`);
     if (kind === "checkbox") next[name] = input.checked;
     else if (kind === "number") next[name] = Number(input.value || 0);
     else next[name] = input.value;
   }
   return next;
+}
+
+function renderDevices(containerID, messageID, devices) {
+  const list = $(containerID);
+  list.innerHTML = "";
+  if (!devices.length) {
+    showInline(messageID, "No Tablo devices were found for this account.", "warn");
+    return;
+  }
+  $("deviceStep").classList.add("active");
+  showInline(messageID, "Select the Tablo device this proxy should use.", "success");
+  for (const device of devices) {
+    const row = document.createElement("article");
+    row.className = "device";
+    row.innerHTML = `
+      <div>
+        <strong>${escapeHTML(device.name || "Tablo")}</strong>
+        <span>${escapeHTML(device.serverId || "Unknown server")} · ${escapeHTML(device.url || "No URL")}</span>
+      </div>
+    `;
+    const button = document.createElement("button");
+    button.textContent = "Use this device";
+    button.onclick = async () => {
+      button.disabled = true;
+      button.textContent = "Connecting...";
+      try {
+        await api("/admin/api/tablo/select-device", { method: "POST", body: JSON.stringify({ serverId: device.serverId }) });
+        toast("Device selected. Dashboard unlocked.");
+        await loadSession();
+      } catch (err) {
+        button.disabled = false;
+        button.textContent = "Use this device";
+        showInline(messageID, err.message, "error");
+      }
+    };
+    row.appendChild(button);
+    list.appendChild(row);
+  }
+}
+
+function escapeHTML(value) {
+  return String(value).replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#039;"
+  })[char]);
+}
+
+async function submitTabloLogin(form, containerID, messageID) {
+  hideInline(messageID);
+  $(containerID).innerHTML = "";
+  const button = form.querySelector("button[type='submit']");
+  const previous = button.textContent;
+  button.disabled = true;
+  button.textContent = "Scanning...";
+  try {
+    const data = await api("/admin/api/tablo/login", { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(form))) });
+    renderDevices(containerID, messageID, data.devices || []);
+  } catch (err) {
+    showInline(messageID, err.message, "error");
+  } finally {
+    button.disabled = false;
+    button.textContent = previous;
+  }
 }
 
 document.querySelectorAll(".tabs button").forEach((button) => {
@@ -104,16 +211,16 @@ $("loginForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   try {
     await api("/admin/api/login", { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(event.target))) });
-    toast("Logged in");
     await loadSession();
   } catch (err) {
-    toast(err.message.trim());
+    toast(err.message);
   }
 });
 
 $("logout").addEventListener("click", async () => {
   await api("/admin/api/logout", { method: "POST", body: "{}" });
-  showApp(false);
+  showView("login");
+  $("summary").textContent = "Signed out.";
 });
 
 $("configForm").addEventListener("submit", async (event) => {
@@ -123,51 +230,50 @@ $("configForm").addEventListener("submit", async (event) => {
     currentConfig = data.config;
     renderConfig(currentConfig);
     await loadStatus();
-    toast(data.restartPending ? "Saved. Restart required for some fields." : "Settings saved");
+    toast(data.restartPending ? "Saved. Restart required for some fields." : "Settings saved.");
   } catch (err) {
-    toast(err.message.trim());
+    toast(err.message);
   }
 });
 
-$("tabloLoginForm").addEventListener("submit", async (event) => {
+$("tabloLoginForm").addEventListener("submit", (event) => {
   event.preventDefault();
-  try {
-    const data = await api("/admin/api/tablo/login", { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(event.target))) });
-    const list = $("deviceList");
-    list.innerHTML = "";
-    for (const device of data.devices || []) {
-      const row = document.createElement("div");
-      row.className = "device";
-      row.innerHTML = `<span><strong>${device.name || "Tablo"}</strong><br>${device.serverId || ""} ${device.url || ""}</span>`;
-      const button = document.createElement("button");
-      button.textContent = "Select";
-      button.onclick = async () => {
-        await api("/admin/api/tablo/select-device", { method: "POST", body: JSON.stringify({ serverId: device.serverId }) });
-        toast("Device selected");
-        await Promise.all([loadConfig(), loadStatus()]);
-      };
-      row.appendChild(button);
-      list.appendChild(row);
-    }
-  } catch (err) {
-    toast(err.message.trim());
-  }
+  submitTabloLogin(event.target, "deviceList", "setupMessage");
+});
+
+$("dashboardTabloLoginForm").addEventListener("submit", (event) => {
+  event.preventDefault();
+  submitTabloLogin(event.target, "dashboardDeviceList", "dashboardSetupMessage");
 });
 
 $("refreshLineup").onclick = async () => {
-  await api("/admin/api/actions/refresh-lineup", { method: "POST", body: "{}" });
-  toast("Lineup refresh complete");
-  loadStatus();
-};
-$("refreshGuide").onclick = async () => {
-  await api("/admin/api/actions/refresh-guide", { method: "POST", body: "{}" });
-  toast("Guide refresh complete");
-  loadStatus();
-};
-$("reloadStatus").onclick = loadStatus;
-$("reloadLogs").onclick = async () => {
-  const data = await api("/admin/api/logs");
-  $("logOutput").textContent = (data.lines || []).join("\n");
+  try {
+    await api("/admin/api/actions/refresh-lineup", { method: "POST", body: "{}" });
+    toast("Lineup refresh complete.");
+    loadStatus();
+  } catch (err) {
+    toast(err.message);
+  }
 };
 
-loadSession().catch((err) => toast(err.message.trim()));
+$("refreshGuide").onclick = async () => {
+  try {
+    await api("/admin/api/actions/refresh-guide", { method: "POST", body: "{}" });
+    toast("Guide refresh complete.");
+    loadStatus();
+  } catch (err) {
+    toast(err.message);
+  }
+};
+
+$("reloadStatus").onclick = loadStatus;
+$("reloadLogs").onclick = async () => {
+  try {
+    const data = await api("/admin/api/logs");
+    $("logOutput").textContent = (data.lines || []).join("\n");
+  } catch (err) {
+    toast(err.message);
+  }
+};
+
+loadSession().catch((err) => toast(err.message));
