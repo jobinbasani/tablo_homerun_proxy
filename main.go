@@ -41,6 +41,13 @@ func main() {
 		fmt.Fprintf(os.Stderr, "database config error: %v\n", err)
 		os.Exit(1)
 	}
+	cfg, configOverridden := config.ApplyStartupOverrides(cfg, bootCfg)
+	if configOverridden {
+		if err := cfgStore.SaveConfig(context.Background(), cfg, restartPending); err != nil {
+			fmt.Fprintf(os.Stderr, "database config override error: %v\n", err)
+			os.Exit(1)
+		}
+	}
 	cfg.UserName = bootCfg.UserName
 	cfg.UserPass = bootCfg.UserPass
 	cfg.ForceCreds = bootCfg.ForceCreds

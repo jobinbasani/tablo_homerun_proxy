@@ -36,6 +36,7 @@ type Config struct {
 	ForceLineup          bool
 	DBPath               string
 	AdminPassword        string
+	Explicit             map[string]bool `json:"-"`
 }
 
 type EnvConfig struct {
@@ -63,6 +64,7 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	explicit := explicitEnv()
 	envPath := filepath.Join(baseDir, ".env")
 	if err := ensureEnvFile(envPath); err != nil {
 		return Config{}, err
@@ -72,6 +74,9 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	for key, value := range env {
+		if defaultValue, ok := defaultEnvValues()[key]; ok && value != defaultValue {
+			explicit[envFieldName(key)] = true
+		}
 		if _, exists := os.LookupEnv(key); !exists {
 			_ = os.Setenv(key, value)
 		}
@@ -106,6 +111,11 @@ func Load() (Config, error) {
 	dbPath := flag.String("db", envCfg.DBPath, "SQLite database path")
 	adminPassword := flag.String("admin_password", envCfg.AdminPassword, "initial admin password")
 	flag.Parse()
+	flag.Visit(func(f *flag.Flag) {
+		if field := flagFieldName(f.Name); field != "" {
+			explicit[field] = true
+		}
+	})
 
 	cfg.Name = *name
 	cfg.DeviceID = *deviceID
@@ -134,6 +144,7 @@ func Load() (Config, error) {
 		cfg.DBPath = filepath.Join(cfg.OutDir, "proxy.db")
 	}
 	cfg.AdminPassword = *adminPassword
+	cfg.Explicit = explicit
 	if *ip == "" {
 		cfg.IPAddress = firstIPv4()
 	} else {
@@ -141,6 +152,51 @@ func Load() (Config, error) {
 	}
 	cfg = ApplyDerived(cfg)
 	return cfg, nil
+}
+
+func ApplyStartupOverrides(stored Config, boot Config) (Config, bool) {
+	next := stored
+	changed := false
+	applyString := func(field string, target *string, value string) {
+		if boot.Explicit[field] && *target != value {
+			*target = value
+			changed = true
+		}
+	}
+	applyBool := func(field string, target *bool, value bool) {
+		if boot.Explicit[field] && *target != value {
+			*target = value
+			changed = true
+		}
+	}
+	applyInt := func(field string, target *int, value int) {
+		if boot.Explicit[field] && *target != value {
+			*target = value
+			changed = true
+		}
+	}
+	applyDuration := func(field string, target *time.Duration, value time.Duration) {
+		if boot.Explicit[field] && *target != value {
+			*target = value
+			changed = true
+		}
+	}
+
+	applyString("Name", &next.Name, boot.Name)
+	applyString("DeviceID", &next.DeviceID, boot.DeviceID)
+	applyString("Port", &next.Port, boot.Port)
+	applyDuration("LineupInterval", &next.LineupInterval, boot.LineupInterval)
+	applyBool("CreateXML", &next.CreateXML, boot.CreateXML)
+	applyInt("GuideDays", &next.GuideDays, boot.GuideDays)
+	applyBool("IncludePseudoTVGuide", &next.IncludePseudoTVGuide, boot.IncludePseudoTVGuide)
+	applyString("LogLevel", &next.LogLevel, boot.LogLevel)
+	applyString("OutDir", &next.OutDir, boot.OutDir)
+	applyString("TabloDevice", &next.TabloDevice, boot.TabloDevice)
+	applyString("IPAddress", &next.IPAddress, boot.IPAddress)
+	applyDuration("GuideInterval", &next.GuideInterval, boot.GuideInterval)
+	applyBool("IncludeOTT", &next.IncludeOTT, boot.IncludeOTT)
+
+	return ApplyDerived(next), changed
 }
 
 func ApplyDerived(cfg Config) Config {
@@ -155,29 +211,138 @@ func ApplyDerived(cfg Config) Config {
 }
 
 func ensureEnvFile(path string) error {
-	defaults := []string{
-		`NAME="Tablo 4th Gen Proxy"`,
-		`DEVICE_ID="12345679"`,
-		`PORT="8181"`,
-		`LINEUP_UPDATE_INTERVAL="30"`,
-		`CREATE_XML="false"`,
-		`GUIDE_DAYS="2"`,
-		`INCLUDE_PSEUDOTV_GUIDE="false"`,
-		`LOG_LEVEL="info"`,
-		`OUT_DIR=""`,
-		`TABLO_DEVICE=""`,
-		`USER_NAME=""`,
-		`USER_PASS=""`,
-		`IP_ADDRESS=""`,
-		`GUIDE_UPDATE_INTERVAL="24"`,
-		`INCLUDE_OTT="true"`,
-		`DB_PATH=""`,
-		`ADMIN_PASSWORD=""`,
+	defaults := []string{}
+	for _, key := range defaultEnvOrder() {
+		defaults = append(defaults, fmt.Sprintf(`%s="%s"`, key, defaultEnvValues()[key]))
 	}
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return os.WriteFile(path, []byte(strings.Join(defaults, "\n")+"\n"), 0o600)
 	}
 	return nil
+}
+
+func explicitEnv() map[string]bool {
+	explicit := map[string]bool{}
+	for key := range defaultEnvValues() {
+		if _, ok := os.LookupEnv(key); ok {
+			if field := envFieldName(key); field != "" {
+				explicit[field] = true
+			}
+		}
+	}
+	return explicit
+}
+
+func defaultEnvOrder() []string {
+	return []string{
+		"NAME", "DEVICE_ID", "PORT", "LINEUP_UPDATE_INTERVAL", "CREATE_XML", "GUIDE_DAYS",
+		"INCLUDE_PSEUDOTV_GUIDE", "LOG_LEVEL", "OUT_DIR", "TABLO_DEVICE", "USER_NAME",
+		"USER_PASS", "IP_ADDRESS", "GUIDE_UPDATE_INTERVAL", "INCLUDE_OTT", "DB_PATH", "ADMIN_PASSWORD",
+	}
+}
+
+func defaultEnvValues() map[string]string {
+	return map[string]string{
+		"NAME":                   "Tablo 4th Gen Proxy",
+		"DEVICE_ID":              "12345679",
+		"PORT":                   "8181",
+		"LINEUP_UPDATE_INTERVAL": "30",
+		"CREATE_XML":             "false",
+		"GUIDE_DAYS":             "2",
+		"INCLUDE_PSEUDOTV_GUIDE": "false",
+		"LOG_LEVEL":              "info",
+		"OUT_DIR":                "",
+		"TABLO_DEVICE":           "",
+		"USER_NAME":              "",
+		"USER_PASS":              "",
+		"IP_ADDRESS":             "",
+		"GUIDE_UPDATE_INTERVAL":  "24",
+		"INCLUDE_OTT":            "true",
+		"DB_PATH":                "",
+		"ADMIN_PASSWORD":         "",
+	}
+}
+
+func envFieldName(key string) string {
+	switch key {
+	case "NAME":
+		return "Name"
+	case "DEVICE_ID":
+		return "DeviceID"
+	case "PORT":
+		return "Port"
+	case "LINEUP_UPDATE_INTERVAL":
+		return "LineupInterval"
+	case "CREATE_XML":
+		return "CreateXML"
+	case "GUIDE_DAYS":
+		return "GuideDays"
+	case "INCLUDE_PSEUDOTV_GUIDE":
+		return "IncludePseudoTVGuide"
+	case "LOG_LEVEL":
+		return "LogLevel"
+	case "OUT_DIR":
+		return "OutDir"
+	case "TABLO_DEVICE":
+		return "TabloDevice"
+	case "USER_NAME":
+		return "UserName"
+	case "USER_PASS":
+		return "UserPass"
+	case "IP_ADDRESS":
+		return "IPAddress"
+	case "GUIDE_UPDATE_INTERVAL":
+		return "GuideInterval"
+	case "INCLUDE_OTT":
+		return "IncludeOTT"
+	case "DB_PATH":
+		return "DBPath"
+	case "ADMIN_PASSWORD":
+		return "AdminPassword"
+	default:
+		return ""
+	}
+}
+
+func flagFieldName(name string) string {
+	switch name {
+	case "name":
+		return "Name"
+	case "id":
+		return "DeviceID"
+	case "port":
+		return "Port"
+	case "channels":
+		return "LineupInterval"
+	case "xml":
+		return "CreateXML"
+	case "days":
+		return "GuideDays"
+	case "pseudo":
+		return "IncludePseudoTVGuide"
+	case "level":
+		return "LogLevel"
+	case "outdir":
+		return "OutDir"
+	case "device":
+		return "TabloDevice"
+	case "user":
+		return "UserName"
+	case "pass":
+		return "UserPass"
+	case "ip_address":
+		return "IPAddress"
+	case "guide":
+		return "GuideInterval"
+	case "ott":
+		return "IncludeOTT"
+	case "db":
+		return "DBPath"
+	case "admin_password":
+		return "AdminPassword"
+	default:
+		return ""
+	}
 }
 
 func readEnvFile(path string) (map[string]string, error) {
