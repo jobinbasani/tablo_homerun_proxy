@@ -18,4 +18,5 @@ services:
       - ./data:/data
     ports:
       - "8181:8181/tcp"
+      - "65001:65001/udp"
     restart: unless-stopped

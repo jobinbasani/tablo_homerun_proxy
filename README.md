@@ -5,7 +5,7 @@ Go implementation of a Tablo 4th Gen to HDHomeRun-compatible proxy for Plex Live
 ## What it does
 
 - Exposes HDHomeRun-style endpoints for Plex: `/discover.json`, `/lineup.json`, `/lineup_status.json`, and `/channel/:id`.
-- Advertises itself on the LAN with SSDP so Plex can discover it as an HDHomeRun-compatible tuner.
+- Advertises itself on the LAN with HDHomeRun UDP discovery and SSDP so Plex can discover it as an HDHomeRun-compatible tuner.
 - Authenticates with Lighthouse/Tablo, stores encrypted credentials in SQLite, and caches `lineup.json`.
 - Requests live Tablo watch URLs on demand and pipes them through `ffmpeg` as MPEG-TS.
 - Optionally builds an XMLTV guide at `/guide.xml`.
@@ -35,7 +35,7 @@ docker run -d \
 
 Open `http://<host>:8181/admin` to log in, connect your Tablo account, select a device, and manage settings.
 
-For Plex auto-discovery in Docker, use host networking as shown in `docker-compose.host.example.yml`. The normal bridge compose file still works for manual setup, but multicast SSDP discovery is generally not forwarded through Docker port publishing.
+For Plex auto-discovery in Docker, use host networking as shown in `docker-compose.host.example.yml`. The normal bridge compose file still works for manual setup and publishes HDHomeRun UDP discovery on `65001/udp`, but multicast SSDP discovery is generally not forwarded through Docker port publishing.
 
 ## Important flags
 

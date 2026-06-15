@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/jobinbasani/tablo_homerun_proxy/internal/config"
+	"github.com/jobinbasani/tablo_homerun_proxy/internal/hdhr"
 	"github.com/jobinbasani/tablo_homerun_proxy/internal/logging"
 	"github.com/jobinbasani/tablo_homerun_proxy/internal/scheduler"
 	"github.com/jobinbasani/tablo_homerun_proxy/internal/server"
@@ -120,6 +121,8 @@ func main() {
 		return nil
 	}
 	httpServer.SetSetupHandler(activateProxy)
+	hdhrDiscovery := hdhr.New(httpServer.ConfigSnapshot, httpServer.IsProxyReady, tabloService.TunerCount, logger)
+	go hdhrDiscovery.Run(ctx)
 	ssdpService := ssdp.New(httpServer.ConfigSnapshot, httpServer.IsProxyReady, logger)
 	go ssdpService.Run(ctx)
 	if err := activateProxy(ctx); err != nil {

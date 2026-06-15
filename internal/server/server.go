@@ -136,7 +136,7 @@ func (s *Server) handleDiscover(w http.ResponseWriter, _ *http.Request) {
 		"DeviceID":        cfg.DeviceID,
 		"DeviceAuth":      "tabloauth123",
 		"BaseURL":         cfg.ServerURL,
-		"LocalIP":         cfg.ServerURL,
+		"LocalIP":         cfg.IPAddress,
 		"LineupURL":       cfg.ServerURL + "/lineup.json",
 		"TunerCount":      s.tablo.TunerCount(),
 	})
