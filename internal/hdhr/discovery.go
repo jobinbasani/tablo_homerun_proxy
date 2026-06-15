@@ -85,7 +85,9 @@ func (s *Service) Run(ctx context.Context) {
 		}
 		if _, err := conn.WriteToUDP(response, remote); err != nil {
 			s.log.Warn("HDHomeRun discovery response failed: %v", err)
+			continue
 		}
+		s.log.Always("HDHomeRun discovery request answered for %s.", remote.String())
 	}
 }
 

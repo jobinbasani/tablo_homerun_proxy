@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"os/exec"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -121,11 +123,12 @@ func withCORS(next http.Handler) http.Handler {
 	})
 }
 
-func (s *Server) handleDiscover(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleDiscover(w http.ResponseWriter, r *http.Request) {
 	if !s.isProxyReady() {
 		http.Error(w, "proxy setup required", http.StatusServiceUnavailable)
 		return
 	}
+	s.logClientRequest("discover", r)
 	cfg := s.config()
 	writeJSON(w, map[string]any{
 		"FriendlyName":    cfg.Name,
@@ -142,11 +145,12 @@ func (s *Server) handleDiscover(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
-func (s *Server) handleLineup(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleLineup(w http.ResponseWriter, r *http.Request) {
 	if !s.isProxyReady() {
 		http.Error(w, "proxy setup required", http.StatusServiceUnavailable)
 		return
 	}
+	s.logClientRequest("lineup", r)
 	lineup := s.tablo.Lineup()
 	sort.Slice(lineup, func(i, j int) bool {
 		return lineup[i].GuideNumber < lineup[j].GuideNumber
@@ -154,11 +158,12 @@ func (s *Server) handleLineup(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, lineup)
 }
 
-func (s *Server) handleLineupStatus(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleLineupStatus(w http.ResponseWriter, r *http.Request) {
 	if !s.isProxyReady() {
 		http.Error(w, "proxy setup required", http.StatusServiceUnavailable)
 		return
 	}
+	s.logClientRequest("lineup_status", r)
 	writeJSON(w, map[string]any{
 		"ScanInProgress": 0,
 		"ScanPossible":   1,
@@ -172,6 +177,7 @@ func (s *Server) handleGuide(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "proxy setup required", http.StatusServiceUnavailable)
 		return
 	}
+	s.logClientRequest("guide", r)
 	http.ServeFile(w, r, s.tablo.GuidePath())
 }
 
@@ -180,6 +186,7 @@ func (s *Server) handleChannel(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "proxy setup required", http.StatusServiceUnavailable)
 		return
 	}
+	s.logClientRequest("stream", r)
 	channelID := r.URL.Path[len("/channel/"):]
 	entry, ok := s.tablo.Channel(channelID)
 	if !ok {
@@ -207,8 +214,9 @@ func (s *Server) handleChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	current := atomic.AddInt64(&s.streams, 1)
 	defer atomic.AddInt64(&s.streams, -1)
-	s.log.Info("[%d/%d] client connected to %s.", current, s.tablo.TunerCount(), channelID)
-	defer s.log.Info("client disconnected from %s.", channelID)
+	client := clientDescription(r)
+	s.log.Info("[%d/%d] client connected to %s from %s.", current, s.tablo.TunerCount(), channelID, client)
+	defer s.log.Info("client disconnected from %s from %s.", channelID, client)
 
 	cmd := exec.CommandContext(r.Context(), "ffmpeg",
 		"-i", playlistURL,
@@ -243,6 +251,39 @@ func (s *Server) handleChannel(w http.ResponseWriter, r *http.Request) {
 func writeJSON(w http.ResponseWriter, value any) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(value)
+}
+
+func (s *Server) logClientRequest(kind string, r *http.Request) {
+	client := clientDescription(r)
+	if looksLikePlex(r) {
+		s.log.Always("Plex client requested %s from %s.", kind, client)
+		return
+	}
+	s.log.Info("HDHomeRun client requested %s from %s.", kind, client)
+}
+
+func clientDescription(r *http.Request) string {
+	host := r.RemoteAddr
+	if parsedHost, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		host = parsedHost
+	}
+	userAgent := strings.TrimSpace(r.UserAgent())
+	if userAgent == "" {
+		userAgent = "unknown user-agent"
+	}
+	return host + " (" + userAgent + ")"
+}
+
+func looksLikePlex(r *http.Request) bool {
+	if strings.Contains(strings.ToLower(r.UserAgent()), "plex") {
+		return true
+	}
+	for name := range r.Header {
+		if strings.HasPrefix(strings.ToLower(name), "x-plex-") {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) config() config.Config {
