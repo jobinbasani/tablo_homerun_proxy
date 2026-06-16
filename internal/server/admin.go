@@ -3,7 +3,9 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/jobinbasani/tablo_homerun_proxy/internal/config"
@@ -11,6 +13,7 @@ import (
 )
 
 const adminCookieName = "tablo_admin_session"
+const endpointPreviewLimit = 50 * 1024
 
 type configResponse struct {
 	Config         adminConfig     `json:"config"`
@@ -34,6 +37,24 @@ type adminConfig struct {
 	IncludeOTT           bool   `json:"IncludeOTT"`
 	DBPath               string `json:"DBPath"`
 	ServerURL            string `json:"ServerURL"`
+}
+
+type hdhomerunEndpointResponse struct {
+	ProxyReady bool                      `json:"proxyReady"`
+	Endpoints  []hdhomerunEndpointDetail `json:"endpoints"`
+}
+
+type hdhomerunEndpointDetail struct {
+	Name        string `json:"name"`
+	Path        string `json:"path"`
+	URL         string `json:"url"`
+	ContentType string `json:"contentType"`
+	Available   bool   `json:"available"`
+	Status      string `json:"status"`
+	Count       int    `json:"count,omitempty"`
+	Size        int64  `json:"size,omitempty"`
+	Preview     string `json:"preview,omitempty"`
+	Truncated   bool   `json:"truncated,omitempty"`
 }
 
 func (s *Server) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
@@ -179,6 +200,130 @@ func (s *Server) handleAdminStatus(w http.ResponseWriter, r *http.Request) {
 		"includeOTT":      cfg.IncludeOTT,
 		"restartPending":  s.restartPending(),
 	})
+}
+
+func (s *Server) handleHDHomeRunEndpoints(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	cfg := s.config()
+	ready := s.isProxyReady()
+	details := []hdhomerunEndpointDetail{
+		s.discoveryEndpointDetail(cfg, ready),
+		s.lineupEndpointDetail(cfg, ready),
+		s.lineupStatusEndpointDetail(cfg, ready),
+		s.guideEndpointDetail(cfg, ready),
+	}
+	writeJSON(w, hdhomerunEndpointResponse{ProxyReady: ready, Endpoints: details})
+}
+
+func (s *Server) discoveryEndpointDetail(cfg config.Config, ready bool) hdhomerunEndpointDetail {
+	detail := endpointDetail("Discovery", "/discover.json", cfg.ServerURL+"/discover.json", "application/json", ready)
+	if !ready {
+		return detail
+	}
+	payload := discoveryPayload(cfg, s.tablo.TunerCount())
+	detail.Preview, detail.Size, detail.Truncated = previewJSON(payload)
+	return detail
+}
+
+func (s *Server) lineupEndpointDetail(cfg config.Config, ready bool) hdhomerunEndpointDetail {
+	detail := endpointDetail("Lineup", "/lineup.json", cfg.ServerURL+"/lineup.json", "application/json", ready)
+	if !ready {
+		return detail
+	}
+	lineup := s.tablo.Lineup()
+	detail.Count = len(lineup)
+	if len(lineup) == 0 {
+		detail.Available = false
+		detail.Status = "lineup not loaded"
+		return detail
+	}
+	detail.Preview, detail.Size, detail.Truncated = previewJSON(lineup)
+	return detail
+}
+
+func (s *Server) lineupStatusEndpointDetail(cfg config.Config, ready bool) hdhomerunEndpointDetail {
+	detail := endpointDetail("Lineup Status", "/lineup_status.json", cfg.ServerURL+"/lineup_status.json", "application/json", ready)
+	if !ready {
+		return detail
+	}
+	payload := lineupStatusPayload()
+	detail.Preview, detail.Size, detail.Truncated = previewJSON(payload)
+	return detail
+}
+
+func (s *Server) guideEndpointDetail(cfg config.Config, ready bool) hdhomerunEndpointDetail {
+	detail := endpointDetail("Guide", "/guide.xml", cfg.ServerURL+"/guide.xml", "application/xml", ready && cfg.CreateXML)
+	if !ready {
+		return detail
+	}
+	if !cfg.CreateXML {
+		detail.Status = "XMLTV guide generation is disabled"
+		return detail
+	}
+	info, err := os.Stat(s.tablo.GuidePath())
+	if err != nil {
+		detail.Available = false
+		detail.Status = "guide file not found"
+		return detail
+	}
+	detail.Size = info.Size()
+	detail.Preview, detail.Truncated, err = previewFile(s.tablo.GuidePath(), endpointPreviewLimit)
+	if err != nil {
+		detail.Available = false
+		detail.Status = fmt.Sprintf("could not read guide file: %v", err)
+		return detail
+	}
+	detail.Status = "available"
+	return detail
+}
+
+func endpointDetail(name, path, url, contentType string, available bool) hdhomerunEndpointDetail {
+	status := "available"
+	if !available {
+		status = "proxy setup required"
+	}
+	return hdhomerunEndpointDetail{
+		Name:        name,
+		Path:        path,
+		URL:         url,
+		ContentType: contentType,
+		Available:   available,
+		Status:      status,
+	}
+}
+
+func previewJSON(value any) (string, int64, bool) {
+	data, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		data = []byte(fmt.Sprintf(`{"error":%q}`, err.Error()))
+	}
+	size := int64(len(data))
+	truncated := len(data) > endpointPreviewLimit
+	if truncated {
+		data = data[:endpointPreviewLimit]
+	}
+	return string(data), size, truncated
+}
+
+func previewFile(path string, limit int) (string, bool, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", false, err
+	}
+	defer file.Close()
+	buffer := make([]byte, limit+1)
+	n, err := file.Read(buffer)
+	if err != nil && n == 0 {
+		return "", false, err
+	}
+	truncated := n > limit
+	if truncated {
+		n = limit
+	}
+	return string(buffer[:n]), truncated, nil
 }
 
 func (s *Server) handleTabloLogin(w http.ResponseWriter, r *http.Request) {

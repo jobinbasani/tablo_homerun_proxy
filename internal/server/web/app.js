@@ -85,11 +85,22 @@ async function loadStatus() {
   $("proxyReady").textContent = status.proxyReady ? "Online" : "Setup needed";
   $("activeStreams").textContent = status.activeStreams ?? "-";
   $("restartPending").textContent = status.restartPending ? "Yes" : "No";
+  setRefreshButtons(status);
   $("summary").textContent = status.proxyReady
     ? status.restartPending
       ? "Proxy running. Restart required for some changes."
       : "Proxy running and ready for Plex."
     : "Tablo is configured. Proxy activation needs attention.";
+}
+
+function setRefreshButtons(status) {
+  const lineupDisabled = !status.proxyReady;
+  const guideDisabled = !status.proxyReady || !status.createXML;
+  $("refreshLineup").disabled = lineupDisabled;
+  $("refreshGuide").disabled = guideDisabled;
+  $("hdhrRefreshLineup").disabled = lineupDisabled;
+  $("hdhrRefreshGuide").disabled = guideDisabled;
+  $("hdhrRefreshGuide").title = status.createXML ? "" : "Enable XMLTV guide generation in Settings first.";
 }
 
 async function loadConfig() {
@@ -184,6 +195,55 @@ function escapeHTML(value) {
   })[char]);
 }
 
+async function loadHDHomeRunEndpoints() {
+  hideInline("hdhrMessage");
+  const list = $("hdhrEndpointList");
+  list.innerHTML = `<article class="endpoint-card"><p class="muted">Loading endpoint data...</p></article>`;
+  try {
+    const data = await api("/admin/api/hdhomerun/endpoints");
+    renderHDHomeRunEndpoints(data);
+  } catch (err) {
+    list.innerHTML = "";
+    showInline("hdhrMessage", err.message, "error");
+  }
+}
+
+function renderHDHomeRunEndpoints(data) {
+  const list = $("hdhrEndpointList");
+  list.innerHTML = "";
+  if (!data.proxyReady) {
+    showInline("hdhrMessage", "Complete Tablo setup before these endpoints become available to Plex.", "warn");
+  }
+  for (const endpoint of data.endpoints || []) {
+    const card = document.createElement("article");
+    card.className = "endpoint-card";
+    const meta = [
+      endpoint.contentType,
+      endpoint.count ? `${endpoint.count} items` : "",
+      endpoint.size ? `${formatBytes(endpoint.size)}` : "",
+      endpoint.truncated ? "preview truncated" : ""
+    ].filter(Boolean).join(" · ");
+    card.innerHTML = `
+      <div class="endpoint-head">
+        <div>
+          <h3>${escapeHTML(endpoint.name)}</h3>
+          <a href="${escapeHTML(endpoint.url)}" target="_blank" rel="noreferrer">${escapeHTML(endpoint.path)}</a>
+        </div>
+        <span class="status-pill ${endpoint.available ? "ok" : "warn"}">${escapeHTML(endpoint.status)}</span>
+      </div>
+      <p class="endpoint-meta">${escapeHTML(meta || "No payload details available")}</p>
+      <pre class="endpoint-preview">${escapeHTML(endpoint.preview || "No preview available.")}</pre>
+    `;
+    list.appendChild(card);
+  }
+}
+
+function formatBytes(size) {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 async function submitTabloLogin(form, containerID, messageID) {
   hideInline(messageID);
   $(containerID).innerHTML = "";
@@ -208,6 +268,9 @@ document.querySelectorAll(".tabs button").forEach((button) => {
     document.querySelectorAll(".tab").forEach((tab) => tab.classList.remove("active"));
     button.classList.add("active");
     $(button.dataset.tab).classList.add("active");
+    if (button.dataset.tab === "hdhomerun") {
+      loadHDHomeRunEndpoints();
+    }
   });
 });
 
@@ -276,24 +339,43 @@ $("dashboardTabloLoginForm").addEventListener("submit", (event) => {
 });
 
 $("refreshLineup").onclick = async () => {
+  await refreshLineup(false);
+};
+
+$("hdhrRefreshLineup").onclick = async () => {
+  await refreshLineup(true);
+};
+
+async function refreshLineup(reloadEndpoints) {
   try {
     await api("/admin/api/actions/refresh-lineup", { method: "POST", body: "{}" });
     toast("Lineup refresh complete.");
-    loadStatus();
+    await loadStatus();
+    if (reloadEndpoints) await loadHDHomeRunEndpoints();
   } catch (err) {
     toast(err.message);
   }
-};
+}
 
 $("refreshGuide").onclick = async () => {
+  await refreshGuide(false);
+};
+
+$("hdhrRefreshGuide").onclick = async () => {
+  await refreshGuide(true);
+};
+
+async function refreshGuide(reloadEndpoints) {
   try {
     await api("/admin/api/actions/refresh-guide", { method: "POST", body: "{}" });
     toast("Guide refresh complete.");
-    loadStatus();
+    await loadStatus();
+    if (reloadEndpoints) await loadHDHomeRunEndpoints();
   } catch (err) {
     toast(err.message);
   }
-};
+}
 
 $("reloadStatus").onclick = loadStatus;
+$("reloadHDHomeRun").onclick = loadHDHomeRunEndpoints;
 loadSession().catch((err) => toast(err.message));

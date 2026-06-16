@@ -54,6 +54,7 @@
     <section id="appPanel" class="dashboard hidden">
       <nav class="tabs">
         <button data-tab="status" class="active">Status</button>
+        <button data-tab="hdhomerun">HDHomeRun</button>
         <button data-tab="setup">Setup</button>
         <button data-tab="settings">Settings</button>
       </nav>
@@ -70,6 +71,24 @@
           <button id="refreshLineup">Refresh Lineup</button>
           <button id="refreshGuide">Refresh Guide</button>
           <button id="reloadStatus" class="secondary">Reload Status</button>
+        </div>
+      </section>
+
+      <section id="hdhomerun" class="tab">
+        <div class="panel">
+          <div class="section-heading">
+            <div>
+              <h2>HDHomeRun Endpoints</h2>
+              <p class="muted">Inspect the Plex-facing endpoint payloads and regenerate cached data.</p>
+            </div>
+            <button id="reloadHDHomeRun" class="secondary">Reload Endpoint Data</button>
+          </div>
+          <div class="actions">
+            <button id="hdhrRefreshLineup">Refresh Lineup</button>
+            <button id="hdhrRefreshGuide">Refresh Guide</button>
+          </div>
+          <div id="hdhrMessage" class="inline-message hidden"></div>
+          <div id="hdhrEndpointList" class="endpoint-list"></div>
         </div>
       </section>
 

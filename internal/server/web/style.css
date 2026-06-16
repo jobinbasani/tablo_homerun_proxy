@@ -307,6 +307,84 @@ button.secondary, button.ghost {
   margin-top: 18px;
 }
 
+.section-heading {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 16px;
+}
+
+.endpoint-list {
+	display: grid;
+	gap: 16px;
+	margin-top: 18px;
+}
+
+.endpoint-card {
+	padding: 18px;
+	border: 1px solid var(--line);
+	border-radius: 22px;
+	background: rgba(255, 255, 255, 0.78);
+}
+
+.endpoint-head {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 14px;
+}
+
+.endpoint-head h3 {
+	margin: 0 0 6px;
+	font-size: 20px;
+	letter-spacing: -0.02em;
+}
+
+.endpoint-head a {
+	color: var(--primary-dark);
+	font-weight: 800;
+	overflow-wrap: anywhere;
+}
+
+.endpoint-meta {
+	margin-top: 12px;
+	color: var(--muted);
+	font-weight: 750;
+}
+
+.status-pill {
+	flex: 0 0 auto;
+	padding: 7px 10px;
+	border-radius: 999px;
+	font-size: 12px;
+	font-weight: 900;
+	text-transform: uppercase;
+}
+
+.status-pill.ok {
+	color: #047857;
+	background: rgba(16, 185, 129, 0.14);
+}
+
+.status-pill.warn {
+	color: #c2410c;
+	background: rgba(249, 115, 22, 0.14);
+}
+
+.endpoint-preview {
+	max-height: 360px;
+	margin: 14px 0 0;
+	padding: 14px;
+	overflow: auto;
+	border-radius: 16px;
+	background: #0b1020;
+	color: #d7e2ff;
+	font-size: 13px;
+	line-height: 1.5;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
 .device-list {
   display: grid;
   gap: 12px;
@@ -369,6 +447,7 @@ button.secondary, button.ghost {
   .hero { flex-direction: column; }
   .grid, .settings { grid-template-columns: 1fr; }
   .panel { padding: 20px; border-radius: 22px; }
+  .section-heading, .endpoint-head { flex-direction: column; }
   .device { align-items: stretch; flex-direction: column; }
   .tabs button { flex: 1 1 42%; }
 }

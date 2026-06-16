@@ -78,6 +78,7 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/admin/api/password", s.requireAdmin(s.handleAdminPassword))
 	mux.HandleFunc("/admin/api/config", s.requireAdmin(s.handleAdminConfig))
 	mux.HandleFunc("/admin/api/status", s.requireAdmin(s.handleAdminStatus))
+	mux.HandleFunc("/admin/api/hdhomerun/endpoints", s.requireAdmin(s.handleHDHomeRunEndpoints))
 	mux.HandleFunc("/admin/api/tablo/login", s.requireAdmin(s.handleTabloLogin))
 	mux.HandleFunc("/admin/api/tablo/select-device", s.requireAdmin(s.handleTabloSelectDevice))
 	mux.HandleFunc("/admin/api/actions/refresh-lineup", s.requireAdmin(s.handleRefreshLineup))
@@ -130,19 +131,7 @@ func (s *Server) handleDiscover(w http.ResponseWriter, r *http.Request) {
 	}
 	s.logClientRequest("discover", r)
 	cfg := s.config()
-	writeJSON(w, map[string]any{
-		"FriendlyName":    cfg.Name,
-		"Manufacturer":    "tablo-homerun-proxy",
-		"ModelNumber":     "HDHR3-US",
-		"FirmwareName":    "hdhomerun3_atsc",
-		"FirmwareVersion": "20240101",
-		"DeviceID":        cfg.DeviceID,
-		"DeviceAuth":      "tabloauth123",
-		"BaseURL":         cfg.ServerURL,
-		"LocalIP":         cfg.IPAddress,
-		"LineupURL":       cfg.ServerURL + "/lineup.json",
-		"TunerCount":      s.tablo.TunerCount(),
-	})
+	writeJSON(w, discoveryPayload(cfg, s.tablo.TunerCount()))
 }
 
 func (s *Server) handleLineup(w http.ResponseWriter, r *http.Request) {
@@ -164,12 +153,7 @@ func (s *Server) handleLineupStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.logClientRequest("lineup_status", r)
-	writeJSON(w, map[string]any{
-		"ScanInProgress": 0,
-		"ScanPossible":   1,
-		"Source":         "Antenna",
-		"SourceList":     []string{"Antenna"},
-	})
+	writeJSON(w, lineupStatusPayload())
 }
 
 func (s *Server) handleGuide(w http.ResponseWriter, r *http.Request) {
@@ -251,6 +235,31 @@ func (s *Server) handleChannel(w http.ResponseWriter, r *http.Request) {
 func writeJSON(w http.ResponseWriter, value any) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(value)
+}
+
+func discoveryPayload(cfg config.Config, tunerCount int) map[string]any {
+	return map[string]any{
+		"FriendlyName":    cfg.Name,
+		"Manufacturer":    "tablo-homerun-proxy",
+		"ModelNumber":     "HDHR3-US",
+		"FirmwareName":    "hdhomerun3_atsc",
+		"FirmwareVersion": "20240101",
+		"DeviceID":        cfg.DeviceID,
+		"DeviceAuth":      "tabloauth123",
+		"BaseURL":         cfg.ServerURL,
+		"LocalIP":         cfg.IPAddress,
+		"LineupURL":       cfg.ServerURL + "/lineup.json",
+		"TunerCount":      tunerCount,
+	}
+}
+
+func lineupStatusPayload() map[string]any {
+	return map[string]any{
+		"ScanInProgress": 0,
+		"ScanPossible":   1,
+		"Source":         "Antenna",
+		"SourceList":     []string{"Antenna"},
+	}
 }
 
 func (s *Server) logClientRequest(kind string, r *http.Request) {
